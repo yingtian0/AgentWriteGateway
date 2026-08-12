@@ -1,0 +1,22 @@
+[
+  {"id":"svc-01","name":"identity-api","owner_team":"identity","repository":"bakuraku/mono","release_phase":0,"dependencies":[],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-02","name":"tenant-api","owner_team":"platform","repository":"bakuraku/mono","release_phase":0,"dependencies":[],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-03","name":"schema-registry","owner_team":"platform","repository":"bakuraku/mono","release_phase":0,"dependencies":[],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-04","name":"user-api","owner_team":"identity","repository":"bakuraku/mono","release_phase":1,"dependencies":["identity-api","tenant-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-05","name":"organization-api","owner_team":"core","repository":"bakuraku/mono","release_phase":1,"dependencies":["tenant-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-06","name":"master-data-api","owner_team":"core","repository":"bakuraku/mono","release_phase":1,"dependencies":["schema-registry"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-07","name":"workflow-api","owner_team":"workflow","repository":"bakuraku/mono","release_phase":2,"dependencies":["user-api","organization-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-08","name":"expense-api","owner_team":"expense","repository":"bakuraku/mono","release_phase":2,"dependencies":["user-api","master-data-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-09","name":"invoice-api","owner_team":"invoice","repository":"bakuraku/mono","release_phase":2,"dependencies":["organization-api","master-data-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-10","name":"card-api","owner_team":"card","repository":"bakuraku/mono","release_phase":2,"dependencies":["user-api","organization-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-11","name":"payment-api","owner_team":"payment","repository":"bakuraku/mono","release_phase":3,"dependencies":["expense-api","invoice-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-12","name":"approval-api","owner_team":"workflow","repository":"bakuraku/mono","release_phase":3,"dependencies":["workflow-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-13","name":"ledger-api","owner_team":"accounting","repository":"bakuraku/mono","release_phase":3,"dependencies":["expense-api","invoice-api","card-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-14","name":"notification-api","owner_team":"platform","repository":"bakuraku/mono","release_phase":3,"dependencies":["user-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-15","name":"document-api","owner_team":"documents","repository":"bakuraku/mono","release_phase":3,"dependencies":["organization-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-16","name":"reporting-api","owner_team":"analytics","repository":"bakuraku/mono","release_phase":4,"dependencies":["ledger-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-17","name":"search-api","owner_team":"platform","repository":"bakuraku/mono","release_phase":4,"dependencies":["document-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-18","name":"integration-api","owner_team":"integrations","repository":"bakuraku/mono","release_phase":4,"dependencies":["payment-api","approval-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-19","name":"audit-api","owner_team":"security","repository":"bakuraku/mono","release_phase":4,"dependencies":["identity-api","organization-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"},
+  {"id":"svc-20","name":"gateway-api","owner_team":"platform","repository":"bakuraku/mono","release_phase":5,"dependencies":["payment-api","approval-api","reporting-api","search-api"],"metadata_version":"v1","updated_at":"2026-08-11T00:00:00Z"}
+]

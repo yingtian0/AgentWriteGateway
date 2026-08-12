@@ -1,0 +1,30 @@
+{
+  "request_id": "demo-release-001",
+  "release_version": "release-2026-08-11",
+  "environment": "production",
+  "requested_by": "user-123",
+  "delegated_agent": {
+    "id": "agent-456",
+    "scopes": ["release:deploy", "release:production"]
+  },
+  "changes": [
+    {
+      "service": "identity-api",
+      "desired_version": "sha-identity",
+      "ci_success": true,
+      "dependencies_healthy": true
+    },
+    {
+      "service": "user-api",
+      "desired_version": "sha-user",
+      "ci_success": true,
+      "dependencies_healthy": true
+    },
+    {
+      "service": "expense-api",
+      "desired_version": "sha-expense",
+      "ci_success": true,
+      "dependencies_healthy": true
+    }
+  ]
+}
