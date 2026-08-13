@@ -1,0 +1,17 @@
+apiVersion: execution.agentwritegateway.io/v1alpha1
+kind: ReleaseProfile
+metadata:
+  name: ecs-rolling-standard
+spec:
+  requiredCapabilities:
+    - deploy
+    - get_status
+    - verify_runtime
+    - rollback
+  deployment:
+    strategy: ecs-rolling
+  verification:
+    required: true
+    observationWindow: 5m
+  rollback:
+    mode: automatic

@@ -1,0 +1,33 @@
+apiVersion: execution.agentwritegateway.io/v1alpha1
+kind: ServiceContract
+metadata:
+  name: gateway-api
+  owner: platform-team
+  repository: github.com/example/agent-write-gateway-demo
+  riskTier: high
+environments:
+  staging:
+    releaseProfile: ecs-rolling-standard
+    runnerGroup: staging-ap-northeast-1
+    capabilities: [deploy, get_status, verify_runtime, rollback]
+  production:
+    releaseProfile: ecs-rolling-standard
+    runnerGroup: production-ap-northeast-1
+    capabilities: [deploy, get_status, verify_runtime, rollback]
+dependencies:
+  - service: payment-api
+    type: traffic
+    condition: verified
+  - service: identity-api
+    type: runtime
+    condition: healthy
+verification:
+  profile: standard-http-api
+  observationWindow: 5m
+  checks:
+    - type: synthetic
+      check: gateway-smoke
+rollback:
+  capability: automatic
+  strategy: previous-task-definition
+  deadline: 30m
