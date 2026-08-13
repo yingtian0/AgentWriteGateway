@@ -42,10 +42,33 @@ func (e *Engine) Plan(request domain.ReleaseRequest) (domain.ReleasePlan, error)
 	return e.planner.Plan(request)
 }
 
+func (e *Engine) PlanIntent(intent domain.ReleaseIntent) (domain.ReleasePlan, error) {
+	request := planner.LegacyRequestFromIntent(intent)
+	if err := validateRequest(request); err != nil {
+		return domain.ReleasePlan{}, err
+	}
+	return e.planner.PlanIntent(intent)
+}
+
 func (e *Engine) Start(ctx context.Context, request domain.ReleaseRequest) (*domain.ReleaseRun, bool, error) {
 	plan, err := e.Plan(request)
 	if err != nil {
 		return nil, false, err
+	}
+	return e.startPlanned(ctx, request, plan)
+}
+
+func (e *Engine) StartIntent(ctx context.Context, intent domain.ReleaseIntent) (*domain.ReleaseRun, bool, error) {
+	plan, err := e.PlanIntent(intent)
+	if err != nil {
+		return nil, false, err
+	}
+	return e.startPlanned(ctx, planner.LegacyRequestFromIntent(intent), plan)
+}
+
+func (e *Engine) startPlanned(ctx context.Context, request domain.ReleaseRequest, plan domain.ReleasePlan) (*domain.ReleaseRun, bool, error) {
+	if err := e.planner.ValidatePlan(plan, e.now()); err != nil {
+		return nil, false, fmt.Errorf("validate release plan before execution: %w", err)
 	}
 	now := e.now().UTC()
 	run := &domain.ReleaseRun{

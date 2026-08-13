@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -48,11 +50,17 @@ func (s *Server) listServices(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) planRelease(w http.ResponseWriter, r *http.Request) {
-	var request domain.ReleaseRequest
-	if !decodeJSON(w, r, &request) {
+	request, intent, ok := decodeReleaseInput(w, r)
+	if !ok {
 		return
 	}
-	plan, err := s.engine.Plan(request)
+	var plan domain.ReleasePlan
+	var err error
+	if intent != nil {
+		plan, err = s.engine.PlanIntent(*intent)
+	} else {
+		plan, err = s.engine.Plan(request)
+	}
 	if err != nil {
 		writeError(w, err)
 		return
@@ -61,11 +69,18 @@ func (s *Server) planRelease(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) startRelease(w http.ResponseWriter, r *http.Request) {
-	var request domain.ReleaseRequest
-	if !decodeJSON(w, r, &request) {
+	request, intent, ok := decodeReleaseInput(w, r)
+	if !ok {
 		return
 	}
-	run, created, err := s.engine.Start(r.Context(), request)
+	var run *domain.ReleaseRun
+	var created bool
+	var err error
+	if intent != nil {
+		run, created, err = s.engine.StartIntent(r.Context(), *intent)
+	} else {
+		run, created, err = s.engine.Start(r.Context(), request)
+	}
 	if err != nil {
 		writeError(w, err)
 		return
@@ -139,7 +154,8 @@ func (s *Server) decideApproval(w http.ResponseWriter, r *http.Request, approve 
 }
 
 type errorResponse struct {
-	Error string `json:"error"`
+	Error      string            `json:"error"`
+	ReasonCode domain.ReasonCode `json:"reason_code,omitempty"`
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
@@ -153,8 +169,56 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	return true
 }
 
+func decodeReleaseInput(w http.ResponseWriter, r *http.Request) (domain.ReleaseRequest, *domain.ReleaseIntent, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON: " + err.Error()})
+		return domain.ReleaseRequest{}, nil, false
+	}
+	var discriminator struct {
+		APIVersion string `json:"api_version"`
+	}
+	if err := json.Unmarshal(data, &discriminator); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON: " + err.Error()})
+		return domain.ReleaseRequest{}, nil, false
+	}
+	if discriminator.APIVersion == "" {
+		var request domain.ReleaseRequest
+		if !decodeStrictJSON(w, data, &request) {
+			return domain.ReleaseRequest{}, nil, false
+		}
+		return request, nil, true
+	}
+	var intent domain.ReleaseIntent
+	if !decodeStrictJSON(w, data, &intent) {
+		return domain.ReleaseRequest{}, nil, false
+	}
+	return domain.ReleaseRequest{}, &intent, true
+}
+
+func decodeStrictJSON(w http.ResponseWriter, data []byte, target any) bool {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON: " + err.Error()})
+		return false
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON: multiple values are not allowed"})
+		return false
+	}
+	return true
+}
+
 func writeError(w http.ResponseWriter, err error) {
 	status := http.StatusBadRequest
+	response := errorResponse{Error: err.Error()}
+	reason, hasReason := domain.ReasonOf(err)
+	if hasReason {
+		response.ReasonCode = reason
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		status = http.StatusNotFound
 	} else if errors.Is(err, store.ErrConflict) {
@@ -163,8 +227,17 @@ func writeError(w http.ResponseWriter, err error) {
 		status = http.StatusForbidden
 	} else if errors.Is(err, planner.ErrDependencyCycle) {
 		status = http.StatusUnprocessableEntity
+	} else if hasReason {
+		switch reason {
+		case domain.ReasonPlanExpired, domain.ReasonPlanHashMismatch,
+			domain.ReasonContractChanged, domain.ReasonProfileChanged,
+			domain.ReasonContextChanged:
+			status = http.StatusConflict
+		default:
+			status = http.StatusUnprocessableEntity
+		}
 	}
-	writeJSON(w, status, errorResponse{Error: err.Error()})
+	writeJSON(w, status, response)
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

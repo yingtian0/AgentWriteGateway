@@ -44,7 +44,7 @@ func TestPlanAndStartRoutes(t *testing.T) {
 	if err := json.NewDecoder(planResponse.Body).Decode(&plan); err != nil {
 		t.Fatal(err)
 	}
-	if plan.Hash == "" || len(plan.Phases) != 1 {
+	if plan.Hash == "" || plan.PlanHash != plan.Hash || plan.ID == "" || plan.ExpiresAt.IsZero() || len(plan.Phases) != 1 {
 		t.Fatalf("unexpected plan: %#v", plan)
 	}
 
@@ -61,5 +61,69 @@ func TestPlanAndStartRoutes(t *testing.T) {
 	}
 	if run.Status != domain.RunSucceeded {
 		t.Fatalf("run status=%s, want SUCCEEDED", run.Status)
+	}
+}
+
+func TestVersionedIntentUsesExistingPlanAndStartRoutes(t *testing.T) {
+	p, err := planner.New([]domain.Service{{Name: "identity", ReleasePhase: 0}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := engine.New(p, policy.New(), executor.NewMock(nil), store.NewMemory())
+	handler := New(e, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	body := []byte(`{
+      "api_version":"execution.agentwritegateway.io/v1alpha1",
+      "kind":"ReleaseIntent",
+      "request_id":"versioned-http-1",
+      "release_version":"release-1",
+      "environment":"staging",
+      "requested_by":"user-1",
+      "delegated_agent":{"id":"agent-1","scopes":["release:deploy"]},
+      "changes":[{"service":"identity","desired_version":"sha-1","ci_success":true,"dependencies_healthy":true}]
+    }`)
+
+	for _, path := range []string{"/v1/release-runs:plan", "/v1/release-runs"} {
+		request := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if path == "/v1/release-runs:plan" && response.Code != http.StatusOK {
+			t.Fatalf("plan status=%d body=%s", response.Code, response.Body.String())
+		}
+		if path == "/v1/release-runs" && response.Code != http.StatusCreated {
+			t.Fatalf("start status=%d body=%s", response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestVersionedIntentReturnsTypedReasonCode(t *testing.T) {
+	p, err := planner.New([]domain.Service{{Name: "identity"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := engine.New(p, policy.New(), executor.NewMock(nil), store.NewMemory())
+	handler := New(e, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	body := []byte(`{
+      "api_version":"execution.agentwritegateway.io/v2",
+      "kind":"ReleaseIntent",
+      "request_id":"invalid-version",
+      "release_version":"release-1",
+      "environment":"staging",
+      "requested_by":"user-1",
+      "delegated_agent":{"id":"agent-1","scopes":["release:deploy"]},
+      "changes":[{"service":"identity","desired_version":"sha-1","ci_success":true,"dependencies_healthy":true}]
+    }`)
+	request := httptest.NewRequest(http.MethodPost, "/v1/release-runs:plan", bytes.NewReader(body))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var decoded errorResponse
+	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.ReasonCode != domain.ReasonUnsupportedSchemaVersion {
+		t.Fatalf("reason=%s, want %s", decoded.ReasonCode, domain.ReasonUnsupportedSchemaVersion)
 	}
 }

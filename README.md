@@ -4,11 +4,14 @@
 
 Agent Write Gateway is an open-source Change Execution Control Plane for planning, authorizing, executing, verifying, stopping, and auditing changes requested by people, CI, CLIs, or AI agents through the same deterministic safety boundary.
 
-The current repository is an executable prototype. It performs no external writes and demonstrates safety properties with a 20-service catalog, an in-memory store, and a mock deploy/verify/rollback adapter.
+The current repository is an executable prototype. It performs no external writes and demonstrates safety properties with versioned Service Contracts and Release Profiles, an in-memory store, and a mock deploy/verify/rollback adapter. The original 20-service JSON catalog remains available only through an explicit compatibility adapter.
 
 ## What the prototype demonstrates
 
 - dependency validation, cycle detection, and deterministic release phases
+- typed dependency semantics for rollout, schema, runtime, shared failure domains, migrations, and traffic
+- canonical Contract, Profile, and Plan v2 hashes with expiry and context pinning
+- fail-closed validation for unknown references, profiles, capabilities, and schema versions
 - plan hashes that do not depend on input order
 - separate requester and delegated-agent identities
 - fail-closed policy checks for agent scope, CI, and dependency health
@@ -37,12 +40,20 @@ See the [architecture overview](docs/architecture/overview.md), [threat model](d
 
 ## Run the prototype
 
-Go 1.26 or later is required. The prototype has no external module dependencies.
+Go 1.26 or later is required. YAML decoding uses the maintained `go.yaml.in/yaml/v3` module; no JSON Schema runtime is required.
 
 ```bash
 make test
 make run
 ```
+
+The default process loads `examples/contracts` and `examples/profiles`. To exercise the legacy JSON catalog compatibility adapter instead:
+
+```bash
+go run ./cmd/gateway -catalog config/services.json
+```
+
+`examples/release.json` uses the versioned `ReleaseIntent` envelope. The same HTTP paths continue to accept the original unversioned `ReleaseRequest` JSON for compatibility.
 
 In another terminal, create a plan:
 
@@ -107,8 +118,10 @@ The target public OSS v1.0 date is 2027-03-01. Dates are planning targets, not c
 cmd/gateway       HTTP server composition root
 internal/api      deliberately limited external API
 internal/catalog  prototype service metadata loader
-internal/domain   run, step, approval, and audit model
-internal/planner  dependency graph and plan hashing
+internal/contract versioned Service Contract loading, validation, canonicalization
+internal/profile  versioned Release Profile loading, validation, canonicalization
+internal/domain   dependency, plan, run, step, approval, and audit model
+internal/planner  typed dependency graph and canonical Plan v2 generation
 internal/policy   deterministic prototype policy engine
 internal/engine   prototype state transitions and orchestration
 internal/executor typed adapter interface and mock implementation

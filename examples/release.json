@@ -1,4 +1,6 @@
 {
+  "api_version": "execution.agentwritegateway.io/v1alpha1",
+  "kind": "ReleaseIntent",
   "request_id": "demo-release-001",
   "release_version": "release-2026-08-11",
   "environment": "production",
@@ -15,14 +17,14 @@
       "dependencies_healthy": true
     },
     {
-      "service": "user-api",
-      "desired_version": "sha-user",
+      "service": "payment-api",
+      "desired_version": "sha-payment",
       "ci_success": true,
       "dependencies_healthy": true
     },
     {
-      "service": "expense-api",
-      "desired_version": "sha-expense",
+      "service": "gateway-api",
+      "desired_version": "sha-gateway",
       "ci_success": true,
       "dependencies_healthy": true
     }

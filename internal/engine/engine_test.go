@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"agentwritegateway/internal/contract"
 	"agentwritegateway/internal/domain"
 	"agentwritegateway/internal/executor"
 	"agentwritegateway/internal/planner"
 	"agentwritegateway/internal/policy"
+	"agentwritegateway/internal/profile"
 	"agentwritegateway/internal/store"
 )
 
@@ -157,6 +160,43 @@ func TestAuditFailurePreventsExternalWrite(t *testing.T) {
 	key := run.ID + "/production/identity/sha-identity"
 	if calls := ex.DeployCalls(key); calls != 0 {
 		t.Fatalf("external deploy calls=%d, want 0", calls)
+	}
+}
+
+func TestExpiredPlanCannotExecute(t *testing.T) {
+	plannedAt := time.Date(2026, 8, 13, 1, 0, 0, 0, time.UTC)
+	contracts, err := contract.LoadDir("../../examples/contracts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiles, err := profile.LoadDir("../../examples/profiles")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := planner.NewFromContracts(contracts, profiles, planner.Options{
+		Now:     func() time.Time { return plannedAt },
+		PlanTTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := New(p, policy.New(), executor.NewMock(nil), store.NewMemory())
+	e.now = func() time.Time { return plannedAt.Add(time.Minute) }
+	request := domain.ReleaseRequest{
+		RequestID: "expired-request", ReleaseVersion: "release-1",
+		Environment: domain.EnvironmentStaging, RequestedBy: "user-1",
+		Agent: domain.AgentIdentity{ID: "agent-1", Scopes: []string{"release:deploy"}},
+		Changes: []domain.Change{{
+			Service: "identity-api", DesiredVersion: "sha-identity",
+			CISuccess: true, DependenciesHealthy: true,
+		}},
+	}
+	run, created, err := e.Start(context.Background(), request)
+	if run != nil || created {
+		t.Fatalf("expired plan created a run: run=%#v created=%v", run, created)
+	}
+	if code, ok := domain.ReasonOf(err); !ok || code != domain.ReasonPlanExpired {
+		t.Fatalf("got %v, want %s", err, domain.ReasonPlanExpired)
 	}
 }
 
