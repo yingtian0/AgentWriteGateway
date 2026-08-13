@@ -11,7 +11,7 @@ Thank you for helping build a safer change-execution boundary. This project welc
 
 ## Development setup
 
-Go 1.26 or later is required. The current prototype has no external module dependencies.
+Go 1.26 or later is required.
 
 ```bash
 make fmt-check
@@ -20,7 +20,10 @@ make test-race
 make lint
 ```
 
-Use `make fmt` to format Go files. Pull requests must pass the same four checks in CI.
+Use `make fmt` to format Go files. Pull-request CI also verifies that module files are tidy,
+builds every package, enforces the current coverage floor, randomizes test order, repeats the
+planner safety scenarios, lints workflow files, and scans reachable dependencies with
+`govulncheck`.
 
 ## Change process
 
