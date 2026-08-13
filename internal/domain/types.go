@@ -44,9 +44,15 @@ type ReleaseRequest struct {
 }
 
 type PlanStep struct {
-	Service        string `json:"service"`
-	DesiredVersion string `json:"desired_version"`
-	Phase          int    `json:"phase"`
+	Service              string       `json:"service"`
+	DesiredVersion       string       `json:"desired_version"`
+	Phase                int          `json:"phase"`
+	Profile              string       `json:"profile,omitempty"`
+	Dependencies         []Dependency `json:"dependencies,omitempty"`
+	RequiredCapabilities []Capability `json:"required_capabilities,omitempty"`
+	ContractHash         string       `json:"contract_hash,omitempty"`
+	ProfileHash          string       `json:"profile_hash,omitempty"`
+	ChangeHash           string       `json:"change_hash,omitempty"`
 }
 
 type PlanPhase struct {
@@ -55,11 +61,18 @@ type PlanPhase struct {
 }
 
 type ReleasePlan struct {
-	ReleaseVersion string      `json:"release_version"`
-	Environment    Environment `json:"environment"`
-	Phases         []PlanPhase `json:"phases"`
-	Hash           string      `json:"hash"`
-	CreatedAt      time.Time   `json:"created_at"`
+	APIVersion         string            `json:"api_version,omitempty"`
+	ID                 string            `json:"plan_id,omitempty"`
+	ReleaseVersion     string            `json:"release_version"`
+	Environment        Environment       `json:"environment"`
+	Phases             []PlanPhase       `json:"phases"`
+	Hash               string            `json:"hash"`
+	PlanHash           string            `json:"plan_hash,omitempty"`
+	ContractHashes     map[string]string `json:"contract_hashes,omitempty"`
+	ProfileHashes      map[string]string `json:"profile_hashes,omitempty"`
+	ContextSnapshotRef string            `json:"context_snapshot_ref,omitempty"`
+	CreatedAt          time.Time         `json:"created_at"`
+	ExpiresAt          time.Time         `json:"expires_at,omitempty"`
 }
 
 type RunStatus string

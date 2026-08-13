@@ -1,4 +1,4 @@
-.PHONY: run test test-race lint vet check fmt fmt-check
+.PHONY: run test test-race test-planner benchmark-planner lint vet check fmt fmt-check
 
 run:
 	go run ./cmd/gateway
@@ -8,6 +8,12 @@ test:
 
 test-race:
 	go test -race ./...
+
+test-planner:
+	go test -run TestPlan -count=20 ./internal/planner
+
+benchmark-planner:
+	go test -bench . ./internal/planner
 
 lint: vet
 
