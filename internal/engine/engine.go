@@ -29,6 +29,10 @@ type Engine struct {
 	now      func() time.Time
 }
 
+// Engine is the in-process compatibility facade for the original prototype.
+// Production composition uses application.Releases and Temporal; this facade
+// remains so existing embedders can migrate without an abrupt API break.
+
 func New(p *planner.Planner, pe *policy.Engine, ex executor.ReleaseExecutor, st store.Store) *Engine {
 	return &Engine{planner: p, policy: pe, executor: ex, store: st, now: time.Now}
 }
@@ -202,6 +206,50 @@ func (e *Engine) Cancel(runID, actor string) (*domain.ReleaseRun, error) {
 		return nil, fmt.Errorf("write cancellation audit event: %w", err)
 	}
 	if err := e.store.UpdateRun(run, expectedVersion); err != nil {
+		return nil, err
+	}
+	return e.store.GetRun(runID)
+}
+
+func (e *Engine) Pause(runID, actor string) (*domain.ReleaseRun, error) {
+	run, err := e.store.GetRun(runID)
+	if err != nil {
+		return nil, err
+	}
+	if run.Status != domain.RunRunning && run.Status != domain.RunWaitingApproval {
+		return run, nil
+	}
+	expected := run.StateVersion
+	run.PausedFrom = run.Status
+	run.Status = domain.RunPaused
+	run.UpdatedAt = e.now().UTC()
+	if err := e.store.UpdateRun(run, expected); err != nil {
+		return nil, err
+	}
+	return e.store.GetRun(runID)
+}
+
+func (e *Engine) Resume(ctx context.Context, runID, actor string) (*domain.ReleaseRun, error) {
+	run, err := e.store.GetRun(runID)
+	if err != nil {
+		return nil, err
+	}
+	if run.Status != domain.RunPaused {
+		return run, nil
+	}
+	previous := run.PausedFrom
+	run.PausedFrom = ""
+	if previous == domain.RunWaitingApproval {
+		expected := run.StateVersion
+		run.Status = domain.RunWaitingApproval
+		run.UpdatedAt = e.now().UTC()
+		if err := e.store.UpdateRun(run, expected); err != nil {
+			return nil, err
+		}
+		return e.store.GetRun(runID)
+	}
+	run.Status = domain.RunRunning
+	if err := e.advance(ctx, run); err != nil {
 		return nil, err
 	}
 	return e.store.GetRun(runID)

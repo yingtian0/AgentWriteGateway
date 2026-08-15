@@ -127,3 +127,41 @@ func TestVersionedIntentReturnsTypedReasonCode(t *testing.T) {
 		t.Fatalf("reason=%s, want %s", decoded.ReasonCode, domain.ReasonUnsupportedSchemaVersion)
 	}
 }
+
+func TestPauseResumeRoutesDoNotBypassApproval(t *testing.T) {
+	p, err := planner.New([]domain.Service{{Name: "identity"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := engine.New(p, policy.New(), executor.NewMock(nil), store.NewMemory())
+	handler := New(e, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
+	body := []byte(`{
+      "request_id":"pause-http-1","release_version":"release-1","environment":"production",
+      "requested_by":"user-1","delegated_agent":{"id":"agent-1","scopes":["release:deploy","release:production"]},
+      "changes":[{"service":"identity","desired_version":"sha-1","ci_success":true,"dependencies_healthy":true,"destructive_migration":true}]
+    }`)
+	start := httptest.NewRecorder()
+	handler.ServeHTTP(start, httptest.NewRequest(http.MethodPost, "/v1/release-runs", bytes.NewReader(body)))
+	if start.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", start.Code, start.Body.String())
+	}
+	var run domain.ReleaseRun
+	if err := json.NewDecoder(start.Body).Decode(&run); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"pause", "resume"} {
+		request := httptest.NewRequest(http.MethodPost, "/v1/release-runs/"+run.ID+"/"+action, nil)
+		request.Header.Set("X-Actor-ID", "operator")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", action, response.Code, response.Body.String())
+		}
+		if err := json.NewDecoder(response.Body).Decode(&run); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if run.Status != domain.RunWaitingApproval || run.Steps[0].Execution != nil {
+		t.Fatalf("control crossed approval: %#v", run)
+	}
+}

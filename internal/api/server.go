@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"agentwritegateway/internal/application"
 	"agentwritegateway/internal/domain"
 	"agentwritegateway/internal/engine"
 	"agentwritegateway/internal/planner"
@@ -16,12 +17,12 @@ import (
 )
 
 type Server struct {
-	engine *engine.Engine
+	engine application.ReleaseService
 	logger *slog.Logger
 	mux    *http.ServeMux
 }
 
-func New(e *engine.Engine, logger *slog.Logger) *Server {
+func New(e application.ReleaseService, logger *slog.Logger) *Server {
 	s := &Server{engine: e, logger: logger, mux: http.NewServeMux()}
 	s.routes()
 	return s
@@ -41,8 +42,37 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /v1/release-runs/{id}", s.getRelease)
 	s.mux.HandleFunc("GET /v1/release-runs/{id}/events", s.getEvents)
 	s.mux.HandleFunc("POST /v1/release-runs/{id}/cancel", s.cancelRelease)
+	s.mux.HandleFunc("POST /v1/release-runs/{id}/pause", s.pauseRelease)
+	s.mux.HandleFunc("POST /v1/release-runs/{id}/resume", s.resumeRelease)
 	s.mux.HandleFunc("POST /v1/release-runs/{id}/approvals/{approvalID}/approve", s.approve)
 	s.mux.HandleFunc("POST /v1/release-runs/{id}/approvals/{approvalID}/deny", s.deny)
+}
+
+func (s *Server) pauseRelease(w http.ResponseWriter, r *http.Request) {
+	s.controlRelease(w, r, "pause")
+}
+func (s *Server) resumeRelease(w http.ResponseWriter, r *http.Request) {
+	s.controlRelease(w, r, "resume")
+}
+
+func (s *Server) controlRelease(w http.ResponseWriter, r *http.Request, action string) {
+	actor := strings.TrimSpace(r.Header.Get("X-Actor-ID"))
+	if actor == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "X-Actor-ID header is required"})
+		return
+	}
+	var run *domain.ReleaseRun
+	var err error
+	if action == "pause" {
+		run, err = s.engine.Pause(r.PathValue("id"), actor)
+	} else {
+		run, err = s.engine.Resume(r.Context(), r.PathValue("id"), actor)
+	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
 }
 
 func (s *Server) listServices(w http.ResponseWriter, _ *http.Request) {
@@ -223,7 +253,7 @@ func writeError(w http.ResponseWriter, err error) {
 		status = http.StatusNotFound
 	} else if errors.Is(err, store.ErrConflict) {
 		status = http.StatusConflict
-	} else if errors.Is(err, engine.ErrApproval) {
+	} else if errors.Is(err, engine.ErrApproval) || errors.Is(err, application.ErrApproval) {
 		status = http.StatusForbidden
 	} else if errors.Is(err, planner.ErrDependencyCycle) {
 		status = http.StatusUnprocessableEntity

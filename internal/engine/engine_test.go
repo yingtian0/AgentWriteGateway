@@ -86,6 +86,38 @@ func TestDestructiveChangeWaitsForAuthorizedApproval(t *testing.T) {
 	}
 }
 
+func TestCompatibilityPauseResumeDoesNotBypassApproval(t *testing.T) {
+	e := testEngine(t, executor.NewMock(nil))
+	request := testRequest()
+	request.Changes[0].DestructiveMigration = true
+	run, _, err := e.Start(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status != domain.RunWaitingApproval {
+		t.Fatalf("status=%s", run.Status)
+	}
+	run, err = e.Pause(run.ID, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status != domain.RunPaused || run.PausedFrom != domain.RunWaitingApproval {
+		t.Fatalf("paused run=%#v", run)
+	}
+	run, err = e.Resume(context.Background(), run.ID, "operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status != domain.RunWaitingApproval {
+		t.Fatalf("status=%s", run.Status)
+	}
+	for _, step := range run.Steps {
+		if step.Approval != nil && step.Execution != nil {
+			t.Fatalf("resume crossed approval: %#v", step)
+		}
+	}
+}
+
 func TestPolicyDenyCreatesNoExecutionAndStopsDownstream(t *testing.T) {
 	ex := executor.NewMock(nil)
 	e := testEngine(t, ex)
