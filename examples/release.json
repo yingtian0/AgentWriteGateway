@@ -1,0 +1,32 @@
+{
+  "api_version": "execution.agentwritegateway.io/v1alpha1",
+  "kind": "ReleaseIntent",
+  "request_id": "demo-release-001",
+  "release_version": "release-2026-08-11",
+  "environment": "production",
+  "requested_by": "user-123",
+  "delegated_agent": {
+    "id": "agent-456",
+    "scopes": ["release:deploy", "release:production"]
+  },
+  "changes": [
+    {
+      "service": "identity-api",
+      "desired_version": "sha-identity",
+      "ci_success": true,
+      "dependencies_healthy": true
+    },
+    {
+      "service": "payment-api",
+      "desired_version": "sha-payment",
+      "ci_success": true,
+      "dependencies_healthy": true
+    },
+    {
+      "service": "gateway-api",
+      "desired_version": "sha-gateway",
+      "ci_success": true,
+      "dependencies_healthy": true
+    }
+  ]
+}

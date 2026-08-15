@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentwritegateway.io/schemas/service-contract-v1alpha1.json",
+  "title": "Agent Write Gateway Service Contract v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "environments", "verification", "rollback"],
+  "properties": {
+    "apiVersion": {"const": "execution.agentwritegateway.io/v1alpha1"},
+    "kind": {"const": "ServiceContract"},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "owner", "repository", "riskTier"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"},
+        "owner": {"type": "string", "minLength": 1},
+        "repository": {"type": "string", "minLength": 1},
+        "riskTier": {"enum": ["low", "medium", "high", "critical"]}
+      }
+    },
+    "environments": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "staging": {"$ref": "#/$defs/environment"},
+        "production": {"$ref": "#/$defs/environment"}
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/dependency"}
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "observationWindow", "checks"],
+      "properties": {
+        "profile": {"type": "string", "minLength": 1},
+        "observationWindow": {"type": "string", "minLength": 1},
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type"],
+            "properties": {
+              "type": {"type": "string", "minLength": 1},
+              "threshold": {"type": "string", "minLength": 1},
+              "check": {"type": "string", "minLength": 1}
+            },
+            "anyOf": [{"required": ["threshold"]}, {"required": ["check"]}]
+          }
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "strategy", "deadline"],
+      "properties": {
+        "capability": {"enum": ["automatic", "approval-required", "manual-only", "unsupported"]},
+        "strategy": {"type": "string", "minLength": 1},
+        "deadline": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {
+    "capability": {
+      "enum": ["deploy", "get_status", "cancel", "rollback", "verify_runtime", "verify_metric", "drain", "shift_traffic"]
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseProfile", "runnerGroup", "capabilities"],
+      "properties": {
+        "releaseProfile": {"type": "string", "minLength": 1},
+        "runnerGroup": {"type": "string", "minLength": 1},
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/capability"}
+        }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "service": {"type": "string", "minLength": 1},
+        "resource": {"type": "string", "minLength": 1},
+        "type": {"enum": ["rollout-order", "schema-compatibility", "runtime", "shared-failure-domain", "data-migration", "traffic"]},
+        "condition": {"type": "string"},
+        "constraint": {"type": "string"}
+      },
+      "oneOf": [
+        {"required": ["service"], "not": {"required": ["resource"]}},
+        {"required": ["resource"], "not": {"required": ["service"]}}
+      ]
+    }
+  }
+}

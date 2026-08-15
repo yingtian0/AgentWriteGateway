@@ -1,0 +1,175 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+# A newer commit on the same pull request makes older results irrelevant.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Keep the default token read-only. No job in this workflow publishes anything.
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=readonly
+
+jobs:
+  quality:
+    name: Format, modules, vet, build, and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Verify dependency files
+        run: |
+          go mod verify
+          go mod tidy -diff
+
+      - name: Lint GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/*.yml
+
+      - name: Check formatting
+        run: make fmt-check
+
+      - name: Run static analysis
+        run: go vet ./...
+
+      - name: Run tests with coverage
+        run: |
+          # Infrastructure packages are exercised by the Compose integration job.
+          go list ./... \
+            | grep -Ev '/internal/store/postgres$|/cmd/gateway$|/migrations$' \
+            | xargs go test -shuffle=on -count=1 -covermode=atomic -coverprofile=coverage.out
+
+      - name: Enforce coverage floor
+        env:
+          MINIMUM_COVERAGE: "60.0"
+        run: |
+          go tool cover -func=coverage.out
+          total="$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
+          awk -v total="$total" -v minimum="$MINIMUM_COVERAGE" 'BEGIN {
+            if (total == "" || total + 0 < minimum + 0) {
+              printf "coverage %.1f%% is below the %.1f%% floor\n", total + 0, minimum + 0
+              exit 1
+            }
+          }'
+
+      - name: Build all packages
+        run: go build -trimpath ./...
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: go-coverage
+          path: coverage.out
+          if-no-files-found: ignore
+          retention-days: 14
+
+  race:
+    name: Race detector
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Run race tests
+        run: go test -race -shuffle=on -count=1 ./...
+
+  safety:
+    name: Planner determinism and safety scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      # These tests load every checked-in Contract/Profile and cover graph cycles,
+      # missing references/capabilities, hash pinning, expiry, and the 500/5,000 NFR.
+      - name: Repeat planner safety tests
+        run: go test -shuffle=on -count=20 -run '^(TestPlan|TestNewRejectsUnknownDependency)' ./internal/planner
+
+  durable-integration:
+    name: PostgreSQL and Temporal recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Run PostgreSQL and Temporal integration tests
+        run: make test-integration
+
+      - name: Capture service logs
+        if: failure()
+        run: docker compose -f deploy/compose/compose.yaml logs --no-color
+
+      - name: Stop integration services
+        if: always()
+        run: docker compose -f deploy/compose/compose.yaml down
+
+  vulnerability:
+    name: Go vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Scan reachable dependencies
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...

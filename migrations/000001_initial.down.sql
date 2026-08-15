@@ -1,0 +1,13 @@
+DROP TABLE IF EXISTS service_leases;
+DROP TABLE IF EXISTS outbox_events;
+DROP TRIGGER IF EXISTS audit_events_no_truncate ON audit_events;
+DROP TRIGGER IF EXISTS audit_events_append_only ON audit_events;
+DROP FUNCTION IF EXISTS reject_audit_mutation();
+DROP TABLE IF EXISTS audit_events;
+DROP TABLE IF EXISTS evidence;
+DROP TABLE IF EXISTS executions;
+DROP TABLE IF EXISTS action_grants;
+DROP TABLE IF EXISTS approvals;
+DROP TABLE IF EXISTS policy_decisions;
+DROP TABLE IF EXISTS release_steps;
+DROP TABLE IF EXISTS release_runs;

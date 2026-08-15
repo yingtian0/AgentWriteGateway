@@ -1,0 +1,26 @@
+/bin/
+/coverage.out
+/coverage/
+*.cover
+*.coverprofile
+
+# Local persistence and workflow state
+/agent-write-gateway.db
+/agent-write-gateway.db-shm
+/agent-write-gateway.db-wal
+/postgres-data/
+/temporal-data/
+/.temporal/
+
+# Local environment
+.env
+.env.local
+
+# Editors
+/.idea/
+/.vscode/
+/.fleet/
+
+# OS-generated files
+.DS_Store
+Thumbs.db

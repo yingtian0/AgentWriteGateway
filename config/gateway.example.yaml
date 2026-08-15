@@ -1,0 +1,13 @@
+mode: all
+http:
+  address: ":8080"
+database:
+  url: postgres://agentwritegateway:agentwritegateway@localhost:5432/agentwritegateway?sslmode=disable
+  auto_migrate: true
+temporal:
+  address: localhost:7233
+  namespace: default
+  task_queue: agent-write-gateway-releases
+planning:
+  contracts: examples/contracts
+  profiles: examples/profiles

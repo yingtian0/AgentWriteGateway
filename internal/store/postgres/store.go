@@ -1,0 +1,312 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"agentwritegateway/internal/domain"
+	"agentwritegateway/internal/store"
+	rootmigrations "agentwritegateway/migrations"
+
+	"github.com/golang-migrate/migrate/v4"
+	pgxmigrate "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+)
+
+type Store struct {
+	pool *pgxpool.Pool
+}
+
+func New(ctx context.Context, databaseURL string) (*Store, error) {
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres configuration: %w", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("connect postgres: %w", err)
+	}
+	return &Store{pool: pool}, nil
+}
+
+func (s *Store) Close() { s.pool.Close() }
+
+func Migrate(databaseURL string, down bool) error {
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return err
+	}
+	db, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	driver, err := pgxmigrate.WithInstance(db, &pgxmigrate.Config{DatabaseName: config.ConnConfig.Database})
+	if err != nil {
+		return err
+	}
+	source, err := iofs.New(rootmigrations.FS, ".")
+	if err != nil {
+		return err
+	}
+	migrator, err := migrate.NewWithInstance("iofs", source, "pgx5", driver)
+	if err != nil {
+		return err
+	}
+	defer migrator.Close()
+	if down {
+		err = migrator.Down()
+	} else {
+		err = migrator.Up()
+	}
+	if errors.Is(err, migrate.ErrNoChange) {
+		return nil
+	}
+	return err
+}
+
+func (s *Store) CreateRun(run *domain.ReleaseRun) (*domain.ReleaseRun, bool, error) {
+	return s.CreateRunAtomic(run, nil, nil)
+}
+
+func (s *Store) CreateRunAtomic(run *domain.ReleaseRun, audits []domain.AuditEvent, outbox []domain.OutboxEvent) (*domain.ReleaseRun, bool, error) {
+	ctx := context.Background()
+	stored := cloneRun(run)
+	if stored.WorkflowID == "" {
+		stored.WorkflowID = stored.ID
+	}
+	payload, err := json.Marshal(stored)
+	if err != nil {
+		return nil, false, err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback(ctx)
+	_, err = tx.Exec(ctx, insertRunSQL,
+		stored.ID, stored.RequestID, stored.WorkflowID, stored.TemporalRunID,
+		stored.ReleaseVersion, stored.Environment, stored.RequestedBy, stored.Status,
+		stored.StateVersion, payload, stored.CreatedAt, stored.UpdatedAt,
+	)
+	if err != nil {
+		if isUniqueViolation(err) {
+			existing, getErr := s.getRunByRequest(ctx, stored.RequestID)
+			return existing, false, getErr
+		}
+		return nil, false, err
+	}
+	if err := syncChildren(ctx, tx, stored); err != nil {
+		return nil, false, err
+	}
+	if err := insertEvents(ctx, tx, audits, appendProjectionEvent(outbox, stored)); err != nil {
+		return nil, false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, false, err
+	}
+	return cloneRun(stored), true, nil
+}
+
+func (s *Store) GetRun(id string) (*domain.ReleaseRun, error) {
+	return scanRun(s.pool.QueryRow(context.Background(), selectRunSQL, id))
+}
+
+func (s *Store) getRunByRequest(ctx context.Context, requestID string) (*domain.ReleaseRun, error) {
+	return scanRun(s.pool.QueryRow(ctx, selectRunByRequestSQL, requestID))
+}
+
+func (s *Store) UpdateRun(run *domain.ReleaseRun, expectedVersion int64) error {
+	return s.UpdateRunAtomic(run, expectedVersion, nil, nil)
+}
+
+func (s *Store) UpdateRunAtomic(run *domain.ReleaseRun, expectedVersion int64, audits []domain.AuditEvent, outbox []domain.OutboxEvent) error {
+	ctx := context.Background()
+	updated := cloneRun(run)
+	updated.StateVersion = expectedVersion + 1
+	payload, err := json.Marshal(updated)
+	if err != nil {
+		return err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, updateRunSQL, updated.ID, updated.TemporalRunID, updated.Status, updated.StateVersion, payload, updated.UpdatedAt, expectedVersion)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM release_runs WHERE id=$1)`, updated.ID).Scan(&exists); err != nil {
+			return err
+		}
+		if exists {
+			return store.ErrConflict
+		}
+		return store.ErrNotFound
+	}
+	if err := syncChildren(ctx, tx, updated); err != nil {
+		return err
+	}
+	if err := insertEvents(ctx, tx, audits, appendProjectionEvent(outbox, updated)); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	run.StateVersion = updated.StateVersion
+	return nil
+}
+
+func (s *Store) AppendAudit(event domain.AuditEvent) error {
+	ctx := context.Background()
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := insertAudit(ctx, tx, event); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) AuditEvents(correlationID string) ([]domain.AuditEvent, error) {
+	rows, err := s.pool.Query(context.Background(), `
+SELECT id,correlation_id,actor_type,actor_id,COALESCE(delegated_by,''),action,
+       resource_type,resource_id,result,details,occurred_at
+FROM audit_events WHERE correlation_id=$1 ORDER BY sequence`, correlationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []domain.AuditEvent
+	for rows.Next() {
+		var event domain.AuditEvent
+		var details []byte
+		if err := rows.Scan(&event.ID, &event.CorrelationID, &event.ActorType, &event.ActorID, &event.DelegatedBy,
+			&event.Action, &event.ResourceType, &event.ResourceID, &event.Result, &details, &event.Timestamp); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(details, &event.Details); err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
+func syncChildren(ctx context.Context, tx pgx.Tx, run *domain.ReleaseRun) error {
+	for _, step := range run.Steps {
+		payload, err := json.Marshal(step)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, upsertStepSQL, run.ID, step.Service, run.Environment, step.Phase, step.Status, run.StateVersion, payload, run.UpdatedAt); err != nil {
+			return err
+		}
+		if step.Policy != nil {
+			snapshot, _ := json.Marshal(step.Policy)
+			id := fmt.Sprintf("policy/%s/%s/%s", run.ID, step.Service, step.Policy.InputHash)
+			if _, err := tx.Exec(ctx, `
+INSERT INTO policy_decisions (id,run_id,service,decision,policy_version,input_hash,reason_code,snapshot,created_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
+				id, run.ID, step.Service, step.Policy.Decision, step.Policy.PolicyVersion, step.Policy.InputHash, step.Policy.ReasonCode, snapshot, step.Policy.CreatedAt); err != nil {
+				return err
+			}
+		}
+		if step.Approval != nil {
+			roles, _ := json.Marshal(step.Approval.RequiredRoles)
+			if _, err := tx.Exec(ctx, `
+INSERT INTO approvals (id,run_id,service,status,plan_hash,required_roles,requested_at,expires_at,decided_by,decided_at,state_version)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),$10,$11)
+ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status,decided_by=EXCLUDED.decided_by,
+decided_at=EXCLUDED.decided_at,state_version=EXCLUDED.state_version`,
+				step.Approval.ID, run.ID, step.Service, step.Approval.Status, step.Approval.PlanHash, roles,
+				step.Approval.RequestedAt, step.Approval.ExpiresAt, step.Approval.DecidedBy, step.Approval.DecidedAt, run.StateVersion); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func insertEvents(ctx context.Context, tx pgx.Tx, audits []domain.AuditEvent, outbox []domain.OutboxEvent) error {
+	for _, event := range audits {
+		if err := insertAudit(ctx, tx, event); err != nil {
+			return err
+		}
+	}
+	for _, event := range outbox {
+		payload, err := json.Marshal(event.Payload)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, insertOutboxSQL, event.ID, event.AggregateType, event.AggregateID, event.EventType, payload, event.Attempts, event.AvailableAt, event.PublishedAt, event.CreatedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func insertAudit(ctx context.Context, tx pgx.Tx, event domain.AuditEvent) error {
+	details, err := json.Marshal(event.Details)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, insertAuditSQL, event.ID, event.CorrelationID, event.ActorType, event.ActorID, event.DelegatedBy,
+		event.Action, event.ResourceType, event.ResourceID, event.Result, details, event.Timestamp)
+	return err
+}
+
+func scanRun(row pgx.Row) (*domain.ReleaseRun, error) {
+	var payload []byte
+	if err := row.Scan(&payload); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, store.ErrNotFound
+		}
+		return nil, err
+	}
+	var run domain.ReleaseRun
+	if err := json.Unmarshal(payload, &run); err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+func cloneRun(run *domain.ReleaseRun) *domain.ReleaseRun {
+	data, err := json.Marshal(run)
+	if err != nil {
+		panic(err)
+	}
+	var result domain.ReleaseRun
+	if err := json.Unmarshal(data, &result); err != nil {
+		panic(err)
+	}
+	return &result
+}
+
+func appendProjectionEvent(events []domain.OutboxEvent, run *domain.ReleaseRun) []domain.OutboxEvent {
+	payload, _ := json.Marshal(run)
+	event := domain.OutboxEvent{
+		ID: fmt.Sprintf("projection/%s/%d", run.ID, run.StateVersion), AggregateType: "release_run", AggregateID: run.ID,
+		EventType: "release.run.project", Payload: map[string]any{"run": json.RawMessage(payload)}, CreatedAt: run.UpdatedAt, AvailableAt: run.UpdatedAt,
+	}
+	return append(append([]domain.OutboxEvent(nil), events...), event)
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+var _ store.DurableStore = (*Store)(nil)

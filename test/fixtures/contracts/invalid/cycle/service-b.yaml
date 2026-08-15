@@ -1,0 +1,23 @@
+apiVersion: execution.agentwritegateway.io/v1alpha1
+kind: ServiceContract
+metadata:
+  name: cycle-b
+  owner: fixture-team
+  repository: github.com/example/fixtures
+  riskTier: medium
+environments:
+  staging:
+    releaseProfile: ecs-rolling-standard
+    runnerGroup: staging
+    capabilities: [deploy, get_status, verify_runtime, rollback]
+dependencies:
+  - service: cycle-a
+    type: data-migration
+verification:
+  profile: standard
+  observationWindow: 1m
+  checks: [{type: health, threshold: healthy}]
+rollback:
+  capability: automatic
+  strategy: previous-version
+  deadline: 30m
