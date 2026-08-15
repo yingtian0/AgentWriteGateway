@@ -11,13 +11,15 @@ Thank you for helping build a safer change-execution boundary. This project welc
 
 ## Development setup
 
-Go 1.26 or later is required.
+Go 1.26.6 or later is required.
 
 ```bash
 make fmt-check
 make test
 make test-race
 make lint
+# Requires Docker for PostgreSQL and Temporal.
+make test-integration
 ```
 
 Use `make fmt` to format Go files. Pull-request CI also verifies that module files are tidy,

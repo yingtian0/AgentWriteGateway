@@ -1,10 +1,10 @@
 # Agent Write Gateway
 
-> **Prototype / not production ready.** The current implementation uses an in-memory store and a mock adapter. It must not be connected to production credentials or production write APIs.
+> **Prototype / not production ready.** The current implementation has a PostgreSQL/Temporal durable core but still uses a mock adapter and prototype identity/policy inputs. It must not be connected to production credentials or production write APIs.
 
 Agent Write Gateway is an open-source Change Execution Control Plane for planning, authorizing, executing, verifying, stopping, and auditing changes requested by people, CI, CLIs, or AI agents through the same deterministic safety boundary.
 
-The current repository is an executable prototype. It performs no external writes and demonstrates safety properties with versioned Service Contracts and Release Profiles, an in-memory store, and a mock deploy/verify/rollback adapter. The original 20-service JSON catalog remains available only through an explicit compatibility adapter.
+The current repository is an executable prototype. It performs no external writes and demonstrates safety properties with versioned Service Contracts and Release Profiles, PostgreSQL records/read projections, Temporal workflow history, and a mock deploy/verify/rollback adapter. An in-memory store and the original synchronous Engine remain only as test and migration compatibility paths. The original 20-service JSON catalog remains available through an explicit compatibility adapter.
 
 ## What the prototype demonstrates
 
@@ -21,6 +21,8 @@ The current repository is an executable prototype. It performs no external write
 - separate deploy and verify stages, rollback on verification failure, and downstream stopping
 - audit records for subjects, policy inputs, decisions, and operations
 - optimistic state versions and a deliberately limited HTTP API
+- durable Approval, pause, resume, cancel, retry, and recovery through Temporal
+- transactional audit/outbox persistence and database-enforced execution idempotency
 
 ## Safety boundary
 
@@ -40,18 +42,30 @@ See the [architecture overview](docs/architecture/overview.md), [threat model](d
 
 ## Run the prototype
 
-Go 1.26 or later is required. YAML decoding uses the maintained `go.yaml.in/yaml/v3` module; no JSON Schema runtime is required.
+Go 1.26.6 or later is required. YAML decoding uses the maintained `go.yaml.in/yaml/v3` module; no JSON Schema runtime is required.
 
 ```bash
 make test
-make run
+make compose-up
 ```
 
 The default process loads `examples/contracts` and `examples/profiles`. To exercise the legacy JSON catalog compatibility adapter instead:
 
 ```bash
-go run ./cmd/gateway -catalog config/services.json
+go run ./cmd/gateway -config config/gateway.example.yaml -catalog config/services.json
 ```
+
+The durable runtime uses PostgreSQL for records/read projections and Temporal
+for active workflow history. Start PostgreSQL, Temporal, the Gateway, and a
+separate Worker with:
+
+```bash
+make compose-up
+```
+
+Configuration is loaded from `config/gateway.example.yaml`; `AWG_DATABASE_URL`,
+`AWG_TEMPORAL_ADDRESS`, and the other `AWG_*` variables override file values.
+The compose stack is intended for local development, not production operation.
 
 `examples/release.json` uses the versioned `ReleaseIntent` envelope. The same HTTP paths continue to accept the original unversioned `ReleaseRequest` JSON for compatibility.
 
@@ -81,6 +95,8 @@ POST /v1/release-runs
 GET  /v1/release-runs/{id}
 GET  /v1/release-runs/{id}/events
 POST /v1/release-runs/{id}/cancel
+POST /v1/release-runs/{id}/pause
+POST /v1/release-runs/{id}/resume
 POST /v1/release-runs/{id}/approvals/{approvalID}/approve
 POST /v1/release-runs/{id}/approvals/{approvalID}/deny
 ```
@@ -117,15 +133,17 @@ The target public OSS v1.0 date is 2027-03-01. Dates are planning targets, not c
 ```text
 cmd/gateway       HTTP server composition root
 internal/api      deliberately limited external API
+internal/application release use cases and workflow/outbox dispatch
 internal/catalog  prototype service metadata loader
 internal/contract versioned Service Contract loading, validation, canonicalization
 internal/profile  versioned Release Profile loading, validation, canonicalization
 internal/domain   dependency, plan, run, step, approval, and audit model
 internal/planner  typed dependency graph and canonical Plan v2 generation
 internal/policy   deterministic prototype policy engine
-internal/engine   prototype state transitions and orchestration
+internal/engine   synchronous migration compatibility facade
 internal/executor typed adapter interface and mock implementation
-internal/store    store interface and in-memory implementation
+internal/store    durable store contract, memory test store, PostgreSQL store
+internal/workflow deterministic Temporal workflow and Activity boundaries
 ```
 
 ## Contributing and security
