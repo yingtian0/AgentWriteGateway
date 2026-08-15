@@ -80,6 +80,7 @@ type RunStatus string
 const (
 	RunPending         RunStatus = "PENDING"
 	RunRunning         RunStatus = "RUNNING"
+	RunPaused          RunStatus = "PAUSED"
 	RunWaitingApproval RunStatus = "WAITING_APPROVAL"
 	RunSucceeded       RunStatus = "SUCCEEDED"
 	RunBlocked         RunStatus = "BLOCKED"
@@ -100,6 +101,7 @@ const (
 	StepRollingBack     StepStatus = "ROLLING_BACK"
 	StepRolledBack      StepStatus = "ROLLED_BACK"
 	StepEscalated       StepStatus = "ESCALATED"
+	StepUnknown         StepStatus = "UNKNOWN"
 	StepCancelled       StepStatus = "CANCELLED"
 )
 
@@ -143,7 +145,9 @@ type Approval struct {
 
 type Execution struct {
 	ID                  string    `json:"id"`
+	Adapter             string    `json:"adapter,omitempty"`
 	IdempotencyKey      string    `json:"idempotency_key"`
+	Status              string    `json:"status,omitempty"`
 	ExternalExecutionID string    `json:"external_execution_id"`
 	StartedAt           time.Time `json:"started_at"`
 	FinishedAt          time.Time `json:"finished_at"`
@@ -178,10 +182,25 @@ type ReleaseRun struct {
 	Agent          AgentIdentity `json:"delegated_agent"`
 	Plan           ReleasePlan   `json:"plan"`
 	Status         RunStatus     `json:"status"`
+	PausedFrom     RunStatus     `json:"paused_from,omitempty"`
 	Steps          []ReleaseStep `json:"steps"`
 	StateVersion   int64         `json:"state_version"`
+	WorkflowID     string        `json:"workflow_id,omitempty"`
+	TemporalRunID  string        `json:"temporal_run_id,omitempty"`
 	CreatedAt      time.Time     `json:"created_at"`
 	UpdatedAt      time.Time     `json:"updated_at"`
+}
+
+type OutboxEvent struct {
+	ID            string         `json:"id"`
+	AggregateType string         `json:"aggregate_type"`
+	AggregateID   string         `json:"aggregate_id"`
+	EventType     string         `json:"event_type"`
+	Payload       map[string]any `json:"payload,omitempty"`
+	CreatedAt     time.Time      `json:"created_at"`
+	AvailableAt   time.Time      `json:"available_at"`
+	PublishedAt   *time.Time     `json:"published_at,omitempty"`
+	Attempts      int            `json:"attempts"`
 }
 
 type AuditEvent struct {
