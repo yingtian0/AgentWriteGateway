@@ -71,6 +71,8 @@ type ReleasePlan struct {
 	ContractHashes     map[string]string `json:"contract_hashes,omitempty"`
 	ProfileHashes      map[string]string `json:"profile_hashes,omitempty"`
 	ContextSnapshotRef string            `json:"context_snapshot_ref,omitempty"`
+	PolicyHash         string            `json:"policy_hash,omitempty"`
+	EvidenceHash       string            `json:"evidence_hash,omitempty"`
 	CreatedAt          time.Time         `json:"created_at"`
 	ExpiresAt          time.Time         `json:"expires_at,omitempty"`
 }
@@ -174,21 +176,27 @@ type ReleaseStep struct {
 }
 
 type ReleaseRun struct {
-	ID             string        `json:"id"`
-	RequestID      string        `json:"request_id"`
-	ReleaseVersion string        `json:"release_version"`
-	Environment    Environment   `json:"environment"`
-	RequestedBy    string        `json:"requested_by"`
-	Agent          AgentIdentity `json:"delegated_agent"`
-	Plan           ReleasePlan   `json:"plan"`
-	Status         RunStatus     `json:"status"`
-	PausedFrom     RunStatus     `json:"paused_from,omitempty"`
-	Steps          []ReleaseStep `json:"steps"`
-	StateVersion   int64         `json:"state_version"`
-	WorkflowID     string        `json:"workflow_id,omitempty"`
-	TemporalRunID  string        `json:"temporal_run_id,omitempty"`
-	CreatedAt      time.Time     `json:"created_at"`
-	UpdatedAt      time.Time     `json:"updated_at"`
+	ID                string        `json:"id"`
+	RequestID         string        `json:"request_id"`
+	ReleaseVersion    string        `json:"release_version"`
+	Environment       Environment   `json:"environment"`
+	RequestedBy       string        `json:"requested_by"`
+	SubjectType       string        `json:"subject_type,omitempty"`
+	SubjectIssuer     string        `json:"subject_issuer,omitempty"`
+	UserIdentityProof string        `json:"user_identity_proof,omitempty"`
+	TenantID          string        `json:"tenant_id,omitempty"`
+	RunnerGroup       string        `json:"runner_group,omitempty"`
+	DelegationRef     string        `json:"delegation_ref,omitempty"`
+	Agent             AgentIdentity `json:"delegated_agent"`
+	Plan              ReleasePlan   `json:"plan"`
+	Status            RunStatus     `json:"status"`
+	PausedFrom        RunStatus     `json:"paused_from,omitempty"`
+	Steps             []ReleaseStep `json:"steps"`
+	StateVersion      int64         `json:"state_version"`
+	WorkflowID        string        `json:"workflow_id,omitempty"`
+	TemporalRunID     string        `json:"temporal_run_id,omitempty"`
+	CreatedAt         time.Time     `json:"created_at"`
+	UpdatedAt         time.Time     `json:"updated_at"`
 }
 
 type OutboxEvent struct {

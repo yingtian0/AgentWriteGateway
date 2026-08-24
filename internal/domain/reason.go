@@ -20,6 +20,8 @@ const (
 	ReasonContractChanged          ReasonCode = "CONTRACT_CHANGED"
 	ReasonProfileChanged           ReasonCode = "PROFILE_CHANGED"
 	ReasonContextChanged           ReasonCode = "CONTEXT_CHANGED"
+	ReasonPolicyChanged            ReasonCode = "POLICY_CHANGED"
+	ReasonEvidenceChanged          ReasonCode = "EVIDENCE_CHANGED"
 )
 
 type ReasonError struct {
