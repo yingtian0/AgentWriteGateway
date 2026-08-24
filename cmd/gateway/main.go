@@ -76,7 +76,12 @@ func main() {
 		logger.Error("load planning inputs", "error", err)
 		os.Exit(1)
 	}
-	releasePlanner, err := planner.NewFromContracts(contracts, profiles, planner.Options{})
+	policyEngine, err := policy.NewMandatoryEngine(ctx)
+	if err != nil {
+		logger.Error("initialize mandatory OPA policy", "error", err)
+		os.Exit(1)
+	}
+	releasePlanner, err := planner.NewFromContracts(contracts, profiles, planner.Options{PolicyHash: policyEngine.PolicyHash()})
 	if err != nil {
 		logger.Error("initialize planner", "error", err)
 		os.Exit(1)
@@ -84,7 +89,7 @@ func main() {
 	controller := workflowcore.NewController(temporalClient, settings.Temporal.TaskQueue)
 	releases := application.NewReleases(releasePlanner, persistentStore, controller)
 	go releases.RunWorkflowRecovery(ctx, 5*time.Second, func(err error) { logger.Error("recover workflow outbox", "error", err) })
-	activities := workflowcore.NewActivities(persistentStore, policy.New(), executor.NewMock(nil))
+	activities := workflowcore.NewActivities(persistentStore, policyEngine, executor.NewMock(nil))
 	if settings.Mode == "worker" {
 		runWorker(logger, temporalClient, settings.Temporal.TaskQueue, activities)
 		return

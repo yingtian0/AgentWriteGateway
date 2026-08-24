@@ -105,11 +105,7 @@ func (a *Activities) PersistRun(_ context.Context, input PersistInput) (domain.R
 }
 
 func (a *Activities) EvaluateStep(_ context.Context, input EvaluateInput) (domain.PolicyDecision, error) {
-	decision := a.Policy.Evaluate(policy.Input{
-		UserID: input.Run.RequestedBy, AgentID: input.Run.Agent.ID, AgentScopes: append([]string(nil), input.Run.Agent.Scopes...),
-		Environment: input.Run.Environment, Service: input.Step.Service, CISuccess: input.Step.Change.CISuccess,
-		DependenciesHealthy: input.Step.Change.DependenciesHealthy, DestructiveMigration: input.Step.Change.DestructiveMigration, Risk: input.Step.Change.Risk,
-	})
+	decision := a.Policy.Evaluate(policy.InputForRelease(input.Run, input.Step))
 	return decision, nil
 }
 
