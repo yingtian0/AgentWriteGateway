@@ -1,6 +1,6 @@
 # Agent Write Gateway
 
-> **Prototype / not production ready.** The current implementation has a PostgreSQL/Temporal durable core but still uses a mock adapter and prototype identity/policy inputs. It must not be connected to production credentials or production write APIs.
+> **Prototype / not production ready.** The current implementation has a PostgreSQL/Temporal durable core and a fail-closed Runner authorization boundary, but still has only a mock adapter and no production KMS, JWKS, credential broker, or transport integration. It must not be connected to production credentials or production write APIs.
 
 Agent Write Gateway is an open-source Change Execution Control Plane for planning, authorizing, executing, verifying, stopping, and auditing changes requested by people, CI, CLIs, or AI agents through the same deterministic safety boundary.
 
@@ -23,6 +23,10 @@ The current repository is an executable prototype. It performs no external write
 - optimistic state versions and a deliberately limited HTTP API
 - durable Approval, pause, resume, cancel, retry, and recovery through Temporal
 - transactional audit/outbox persistence and database-enforced execution idempotency
+- canonical, signed `awg.protocol/v1alpha1` Action Grants and strict decoding
+- OIDC signature/issuer/audience/expiry verification and trusted delegation scope checks
+- monotonic OPA policy layers with a mandatory local baseline
+- Runner capability allowlists, durable nonce journal, replay protection, and disconnect-safe reconciliation
 
 ## Safety boundary
 
@@ -66,6 +70,14 @@ make compose-up
 Configuration is loaded from `config/gateway.example.yaml`; `AWG_DATABASE_URL`,
 `AWG_TEMPORAL_ADDRESS`, and the other `AWG_*` variables override file values.
 The compose stack is intended for local development, not production operation.
+
+Packet 03 also provides a Runner process scaffold with a health-only inbound endpoint:
+
+```bash
+go run ./cmd/runner -config config/runner.example.yaml -check-config
+```
+
+The Runner execution core is an internal library until Packet 04 supplies a production-quality typed adapter and credential broker. It exposes no arbitrary command, HTTP, or cloud API field. Production configuration requires durable journal storage and customer-managed trust-key files; development keys are available only through an explicit test/development constructor.
 
 `examples/release.json` uses the versioned `ReleaseIntent` envelope. The same HTTP paths continue to accept the original unversioned `ReleaseRequest` JSON for compatibility.
 
@@ -132,6 +144,7 @@ The target public OSS v1.0 date is 2027-03-01. Dates are planning targets, not c
 
 ```text
 cmd/gateway       HTTP server composition root
+cmd/runner        customer Runner configuration and process scaffold
 internal/api      deliberately limited external API
 internal/application release use cases and workflow/outbox dispatch
 internal/catalog  prototype service metadata loader
@@ -139,11 +152,15 @@ internal/contract versioned Service Contract loading, validation, canonicalizati
 internal/profile  versioned Release Profile loading, validation, canonicalization
 internal/domain   dependency, plan, run, step, approval, and audit model
 internal/planner  typed dependency graph and canonical Plan v2 generation
-internal/policy   deterministic prototype policy engine
+internal/grant    Action Grant signing boundary and strict verification
+internal/identity verified OIDC subjects and trusted agent delegation
+internal/policy   canonical policy input, signed bundles, and embedded OPA
+internal/runner   ordered grant/policy/journal/credential/adapter enforcement
 internal/engine   synchronous migration compatibility facade
 internal/executor typed adapter interface and mock implementation
 internal/store    durable store contract, memory test store, PostgreSQL store
 internal/workflow deterministic Temporal workflow and Activity boundaries
+pkg/protocol      versioned Control Plane/Runner messages and canonical payloads
 ```
 
 ## Contributing and security

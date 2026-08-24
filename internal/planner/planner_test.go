@@ -260,6 +260,22 @@ func TestPlanInvalidatesOnContractAndProfileChanges(t *testing.T) {
 	if err := contextPlanner.ValidatePlan(plan, now.Add(time.Minute)); reasonCode(err) != domain.ReasonContextChanged {
 		t.Fatalf("context invalidation error=%v", err)
 	}
+
+	policyPlanner, err := NewFromContracts(contracts, profiles, Options{ContextSnapshotRef: plan.ContextSnapshotRef, PolicyHash: "sha256:changed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := policyPlanner.ValidatePlan(plan, now.Add(time.Minute)); reasonCode(err) != domain.ReasonPolicyChanged {
+		t.Fatalf("policy invalidation error=%v", err)
+	}
+
+	evidencePlanner, err := NewFromContracts(contracts, profiles, Options{ContextSnapshotRef: plan.ContextSnapshotRef, EvidenceHash: "sha256:changed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := evidencePlanner.ValidatePlan(plan, now.Add(time.Minute)); reasonCode(err) != domain.ReasonEvidenceChanged {
+		t.Fatalf("evidence invalidation error=%v", err)
+	}
 }
 
 func TestPlanExpiredCannotValidateForExecution(t *testing.T) {

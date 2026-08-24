@@ -37,7 +37,7 @@ This is the baseline threat model for the target OSS v1.0 architecture. It must 
 
 The client, agent output, webhook payloads, request-body claims, provider timeout responses, and raw metrics are untrusted. The Control Plane and Runner are separate compromise domains. The Runner owns final enforcement and production credential access, but it is not assumed immune to compromise; it uses workload identity, least privilege, signed inputs, an allowlist, and local journaling to limit blast radius.
 
-Cryptographic details, key custody, rotation, and revocation are intentionally deferred to the protocol packet and require a dedicated ADR before implementation. Until then, documentation must not imply that an unspecified signature alone is sufficient authorization.
+Action Grants and Policy Bundles use canonical Ed25519 signatures as defined in ADR-0006. Production private keys remain behind a KMS/HSM signer interface and are never stored in this repository or Runner configuration. OIDC proofs accept only configured EdDSA or RS256 trust keys. Key discovery, rotation, and revocation remain deployment responsibilities and fail closed when trust material is unavailable. A valid signature proves origin and integrity, not sufficient authorization; all local Runner checks remain mandatory.
 
 ## Threats and controls
 
@@ -57,6 +57,8 @@ Cryptographic details, key custody, rotation, and revocation are intentionally d
 
 **Required tests:** Single-bit or field-level mutation of every bound field is rejected and invokes neither Credential Broker nor adapter.
 
+**Implemented boundary:** `awg.protocol/v1alpha1` uses strict JSON decoding and a canonical struct representation. Runner verification fixes the order of protocol, signature/issuer/audience, expiry/replay, verified subject, trusted delegation, pinned context, approval, capability, local OPA, journal reservation, credential acquisition, and typed adapter dispatch.
+
 ### Action Grant replay
 
 **Scenario:** A valid captured grant is sent repeatedly, to another Runner, or after its intended execution completed.
@@ -64,6 +66,8 @@ Cryptographic details, key custody, rotation, and revocation are intentionally d
 **Controls:** Grants have a unique nonce, short expiry, Runner/tenant audience, step identity, and stable idempotency key. The Runner atomically records nonce consumption and execution intent before obtaining a credential. Repeated delivery returns the recorded result or reconciliation state without another write. Nonce state survives restart.
 
 **Required tests:** Concurrent duplicate delivery, replay after restart, replay after expiry, and cross-Runner or cross-tenant replay produce no additional adapter write.
+
+**Implemented boundary:** The local journal reserves both `(tenant, runner_group, nonce)` and `(tenant, runner_group, idempotency_key)` before credential acquisition. Reserved or unknown records require reconciliation and are never blindly dispatched again.
 
 ### Credential theft
 
@@ -108,6 +112,8 @@ Cryptographic details, key custody, rotation, and revocation are intentionally d
 **Scenario:** A team policy weakens mandatory policy, the Control Plane and Runner use different bundles, or policy is unavailable or expired.
 
 **Controls:** Policy hierarchy is monotonic with a Runner-embedded mandatory baseline. Bundles are versioned, hashed, signed, tested, and pinned to the plan and grant. The Runner is the final enforcement point. Mismatch, invalid signature, missing bundle, or expiry prevents a new write.
+
+Policy modules contribute deny reasons across platform mandatory, environment, team, and service layers. The final decision allows only when the union of deny reasons is empty, so a lower layer cannot erase a mandatory denial.
 
 ### Approval forgery and separation-of-duties bypass
 

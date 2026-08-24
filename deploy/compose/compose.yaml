@@ -63,5 +63,19 @@ services:
     volumes:
       - ../..:/workspace
 
+  runner:
+    image: golang:1.26.6-alpine
+    working_dir: /workspace
+    command: ["go", "run", "./cmd/runner", "-config", "config/runner.example.yaml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AWG_RUNNER_DATABASE_URL: postgres://agentwritegateway:agentwritegateway@postgres:5432/agentwritegateway?sslmode=disable
+    ports:
+      - "8081:8081"
+    volumes:
+      - ../..:/workspace
+
 volumes:
   postgres-data:

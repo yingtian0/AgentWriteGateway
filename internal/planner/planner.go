@@ -26,6 +26,8 @@ type Options struct {
 	Now                func() time.Time
 	PlanTTL            time.Duration
 	ContextSnapshotRef string
+	PolicyHash         string
+	EvidenceHash       string
 }
 
 type serviceDefinition struct {
@@ -46,6 +48,8 @@ type Planner struct {
 	contractHashes     map[string]string
 	profileHashes      map[string]string
 	contextSnapshotRef string
+	policyHash         string
+	evidenceHash       string
 	now                func() time.Time
 	planTTL            time.Duration
 }
@@ -220,9 +224,11 @@ func newPlanner(services map[string]domain.Service, definitions map[string]servi
 	}
 	if options.ContextSnapshotRef == "" {
 		contextHash, _ := hashValue(struct {
-			Contracts map[string]string `json:"contracts"`
-			Profiles  map[string]string `json:"profiles"`
-		}{contractHashes, profileHashes})
+			Contracts    map[string]string `json:"contracts"`
+			Profiles     map[string]string `json:"profiles"`
+			PolicyHash   string            `json:"policy_hash"`
+			EvidenceHash string            `json:"evidence_hash"`
+		}{contractHashes, profileHashes, options.PolicyHash, options.EvidenceHash})
 		options.ContextSnapshotRef = "content:" + contextHash
 	}
 	return &Planner{
@@ -232,6 +238,8 @@ func newPlanner(services map[string]domain.Service, definitions map[string]servi
 		contractHashes:     maps.Clone(contractHashes),
 		profileHashes:      maps.Clone(profileHashes),
 		contextSnapshotRef: options.ContextSnapshotRef,
+		policyHash:         options.PolicyHash,
+		evidenceHash:       options.EvidenceHash,
 		now:                options.Now,
 		planTTL:            options.PlanTTL,
 	}
@@ -388,6 +396,8 @@ func (p *Planner) PlanIntent(intent domain.ReleaseIntent) (domain.ReleasePlan, e
 		ContractHashes:     maps.Clone(p.contractHashes),
 		ProfileHashes:      maps.Clone(p.profileHashes),
 		ContextSnapshotRef: p.contextSnapshotRef,
+		PolicyHash:         p.policyHash,
+		EvidenceHash:       p.evidenceHash,
 		CreatedAt:          now,
 		ExpiresAt:          now.Add(p.planTTL),
 	}
@@ -426,6 +436,12 @@ func (p *Planner) ValidatePlan(plan domain.ReleasePlan, now time.Time) error {
 	if plan.ContextSnapshotRef != p.contextSnapshotRef {
 		return domain.NewReasonError(domain.ReasonContextChanged, "context_snapshot_ref", "context snapshot changed after planning", nil)
 	}
+	if plan.PolicyHash != p.policyHash {
+		return domain.NewReasonError(domain.ReasonPolicyChanged, "policy_hash", "policy changed after planning", nil)
+	}
+	if plan.EvidenceHash != p.evidenceHash {
+		return domain.NewReasonError(domain.ReasonEvidenceChanged, "evidence_hash", "evidence context changed after planning", nil)
+	}
 	return nil
 }
 
@@ -438,6 +454,8 @@ func planHash(plan domain.ReleasePlan) (string, error) {
 		ContractHashes     map[string]string  `json:"contract_hashes"`
 		ProfileHashes      map[string]string  `json:"profile_hashes"`
 		ContextSnapshotRef string             `json:"context_snapshot_ref"`
+		PolicyHash         string             `json:"policy_hash"`
+		EvidenceHash       string             `json:"evidence_hash"`
 	}{
 		APIVersion:         plan.APIVersion,
 		ReleaseVersion:     plan.ReleaseVersion,
@@ -446,6 +464,8 @@ func planHash(plan domain.ReleasePlan) (string, error) {
 		ContractHashes:     plan.ContractHashes,
 		ProfileHashes:      plan.ProfileHashes,
 		ContextSnapshotRef: plan.ContextSnapshotRef,
+		PolicyHash:         plan.PolicyHash,
+		EvidenceHash:       plan.EvidenceHash,
 	}
 	return hashValue(canonical)
 }

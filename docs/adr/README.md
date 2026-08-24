@@ -11,6 +11,7 @@ Architecture Decision Records (ADRs) capture decisions that materially affect Tr
 | [0003](0003-opa-policy-engine.md) | Accepted | Use OPA with Control Plane evaluation and final Runner enforcement |
 | [0004](0004-customer-environment-runner.md) | Accepted | Keep credentials and final write enforcement in a customer-hosted Runner |
 | [0005](0005-postgresql-and-audit-state.md) | Accepted | Use PostgreSQL for durable application state and projections, with append-only audit history |
+| [0006](0006-action-grant-and-identity-signatures.md) | Accepted | Canonical Ed25519 Action Grant and Policy Bundle signatures with verified OIDC JWS subjects |
 
 ## Process
 
