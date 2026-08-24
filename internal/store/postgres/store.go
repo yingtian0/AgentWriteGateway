@@ -309,4 +309,121 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+func (s *Store) GetRunnerAction(ctx context.Context, tenantID, runnerGroup, nonce string) (store.RunnerActionRecord, error) {
+	return scanRunnerAction(s.pool.QueryRow(ctx, `
+SELECT grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,status,result,state_version,created_at,updated_at
+FROM runner_journal WHERE tenant_id=$1 AND runner_group=$2 AND nonce=$3`, tenantID, runnerGroup, nonce))
+}
+
+func (s *Store) ReserveRunnerAction(ctx context.Context, record store.RunnerActionRecord, audit domain.AuditEvent) (store.RunnerActionRecord, bool, error) {
+	record.Status, record.StateVersion = store.RunnerActionReserved, 1
+	result, err := json.Marshal(record.Result)
+	if err != nil {
+		return store.RunnerActionRecord{}, false, err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return store.RunnerActionRecord{}, false, err
+	}
+	defer tx.Rollback(ctx)
+	row := tx.QueryRow(ctx, `
+INSERT INTO runner_journal (grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,status,result,state_version,created_at,updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+ON CONFLICT DO NOTHING
+RETURNING grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,status,result,state_version,created_at,updated_at`,
+		record.GrantID, record.RunID, record.StepID, record.TenantID, record.RunnerGroup, record.Nonce,
+		record.IdempotencyKey, record.RequestHash, record.Status, result, record.StateVersion, record.CreatedAt, record.UpdatedAt)
+	createdRecord, scanErr := scanRunnerAction(row)
+	if scanErr == nil {
+		if err := insertAudit(ctx, tx, audit); err != nil {
+			return store.RunnerActionRecord{}, false, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return store.RunnerActionRecord{}, false, err
+		}
+		return createdRecord, true, nil
+	}
+	if !errors.Is(scanErr, store.ErrNotFound) {
+		return store.RunnerActionRecord{}, false, scanErr
+	}
+	existing, err := scanRunnerAction(tx.QueryRow(ctx, `
+SELECT grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,status,result,state_version,created_at,updated_at
+FROM runner_journal
+WHERE tenant_id=$1 AND runner_group=$2 AND (nonce=$3 OR idempotency_key=$4)
+ORDER BY CASE WHEN nonce=$3 THEN 0 ELSE 1 END LIMIT 1`, record.TenantID, record.RunnerGroup, record.Nonce, record.IdempotencyKey))
+	if err != nil {
+		return store.RunnerActionRecord{}, false, err
+	}
+	return existing, false, nil
+}
+
+func (s *Store) CompleteRunnerAction(ctx context.Context, record store.RunnerActionRecord, expected int64, audit domain.AuditEvent) error {
+	result, err := json.Marshal(record.Result)
+	if err != nil {
+		return err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `
+UPDATE runner_journal SET status=$1,result=$2,state_version=$3,updated_at=$4
+WHERE tenant_id=$5 AND runner_group=$6 AND nonce=$7 AND state_version=$8`,
+		record.Status, result, expected+1, record.UpdatedAt, record.TenantID, record.RunnerGroup, record.Nonce, expected)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return store.ErrConflict
+	}
+	if err := insertAudit(ctx, tx, audit); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) PendingRunnerActions(ctx context.Context, tenantID, runnerGroup string, limit int) ([]store.RunnerActionRecord, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, `
+SELECT grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,status,result,state_version,created_at,updated_at
+FROM runner_journal WHERE tenant_id=$1 AND runner_group=$2 AND status IN ('RESERVED','UNKNOWN') ORDER BY updated_at LIMIT $3`, tenantID, runnerGroup, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []store.RunnerActionRecord{}
+	for rows.Next() {
+		record, err := scanRunnerAction(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, record)
+	}
+	return result, rows.Err()
+}
+
+type runnerActionRow interface{ Scan(...any) error }
+
+func scanRunnerAction(row runnerActionRow) (store.RunnerActionRecord, error) {
+	var record store.RunnerActionRecord
+	var result []byte
+	if err := row.Scan(&record.GrantID, &record.RunID, &record.StepID, &record.TenantID, &record.RunnerGroup,
+		&record.Nonce, &record.IdempotencyKey, &record.RequestHash, &record.Status, &result, &record.StateVersion,
+		&record.CreatedAt, &record.UpdatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return store.RunnerActionRecord{}, store.ErrNotFound
+		}
+		return store.RunnerActionRecord{}, err
+	}
+	if len(result) > 0 {
+		if err := json.Unmarshal(result, &record.Result); err != nil {
+			return store.RunnerActionRecord{}, err
+		}
+	}
+	return record, nil
+}
+
 var _ store.DurableStore = (*Store)(nil)

@@ -1,4 +1,4 @@
-.PHONY: run compose-up compose-down test test-race test-integration test-planner benchmark-planner lint vet check fmt fmt-check
+.PHONY: run compose-up compose-down test test-race test-integration test-scenario test-policy test-planner benchmark-planner lint vet check fmt fmt-check
 
 run:
 	go run ./cmd/gateway
@@ -18,6 +18,16 @@ test-race:
 test-integration:
 	docker compose -f deploy/compose/compose.yaml up -d postgres temporal
 	AWG_INTEGRATION=1 go test -tags=integration -count=1 ./test/integration
+
+test-scenario:
+	go test -count=1 ./test/scenario/...
+
+test-policy:
+	@if command -v opa >/dev/null 2>&1; then \
+		opa test policies/baseline; \
+	else \
+		go test -count=1 ./internal/policy -run 'TestOPA'; \
+	fi
 
 test-planner:
 	go test -run TestPlan -count=20 ./internal/planner

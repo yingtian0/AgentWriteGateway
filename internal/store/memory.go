@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -17,14 +18,24 @@ type Memory struct {
 	executions     map[string]ExecutionRecord
 	outbox         []domain.OutboxEvent
 	projections    map[string]*domain.ReleaseRun
+	runnerActions  map[string]RunnerActionRecord
+	runnerByKey    map[string]string
+	journalError   error
 }
 
 func NewMemory() *Memory {
 	return &Memory{
 		runs: make(map[string]*domain.ReleaseRun), runByRequestID: make(map[string]string),
 		audit: make(map[string][]domain.AuditEvent), executions: make(map[string]ExecutionRecord),
-		projections: make(map[string]*domain.ReleaseRun),
+		projections:   make(map[string]*domain.ReleaseRun),
+		runnerActions: make(map[string]RunnerActionRecord), runnerByKey: make(map[string]string),
 	}
+}
+
+func (m *Memory) SetRunnerJournalError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.journalError = err
 }
 
 func (m *Memory) CreateRun(run *domain.ReleaseRun) (*domain.ReleaseRun, bool, error) {
@@ -184,6 +195,78 @@ func (m *Memory) RebuildProjection(runID string) error {
 	return nil
 }
 
+func (m *Memory) GetRunnerAction(_ context.Context, tenantID, runnerGroup, nonce string) (RunnerActionRecord, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.journalError != nil {
+		return RunnerActionRecord{}, m.journalError
+	}
+	record, ok := m.runnerActions[runnerNonceKey(tenantID, runnerGroup, nonce)]
+	if !ok {
+		return RunnerActionRecord{}, ErrNotFound
+	}
+	return record, nil
+}
+
+func (m *Memory) ReserveRunnerAction(_ context.Context, record RunnerActionRecord, audit domain.AuditEvent) (RunnerActionRecord, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.journalError != nil {
+		return RunnerActionRecord{}, false, m.journalError
+	}
+	nonceKey := runnerNonceKey(record.TenantID, record.RunnerGroup, record.Nonce)
+	if existing, ok := m.runnerActions[nonceKey]; ok {
+		return existing, false, nil
+	}
+	idempotencyKey := runnerIdempotencyKey(record.TenantID, record.RunnerGroup, record.IdempotencyKey)
+	if existingNonce, ok := m.runnerByKey[idempotencyKey]; ok {
+		return m.runnerActions[existingNonce], false, nil
+	}
+	record.Status, record.StateVersion = RunnerActionReserved, 1
+	m.runnerActions[nonceKey] = record
+	m.runnerByKey[idempotencyKey] = nonceKey
+	m.audit[audit.CorrelationID] = append(m.audit[audit.CorrelationID], audit)
+	return record, true, nil
+}
+
+func (m *Memory) CompleteRunnerAction(_ context.Context, record RunnerActionRecord, expected int64, audit domain.AuditEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.journalError != nil {
+		return m.journalError
+	}
+	key := runnerNonceKey(record.TenantID, record.RunnerGroup, record.Nonce)
+	current, ok := m.runnerActions[key]
+	if !ok {
+		return ErrNotFound
+	}
+	if current.StateVersion != expected {
+		return ErrConflict
+	}
+	record.StateVersion = expected + 1
+	m.runnerActions[key] = record
+	m.audit[audit.CorrelationID] = append(m.audit[audit.CorrelationID], audit)
+	return nil
+}
+
+func (m *Memory) PendingRunnerActions(_ context.Context, tenantID, runnerGroup string, limit int) ([]RunnerActionRecord, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.journalError != nil {
+		return nil, m.journalError
+	}
+	result := []RunnerActionRecord{}
+	for _, record := range m.runnerActions {
+		if record.TenantID == tenantID && record.RunnerGroup == runnerGroup && (record.Status == RunnerActionReserved || record.Status == RunnerActionUnknown) {
+			result = append(result, record)
+			if limit > 0 && len(result) >= limit {
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
 func (m *Memory) appendAtomic(runID string, audit []domain.AuditEvent, outbox []domain.OutboxEvent) {
 	for _, event := range audit {
 		m.audit[event.CorrelationID] = append(m.audit[event.CorrelationID], event)
@@ -202,6 +285,12 @@ func appendProjection(events []domain.OutboxEvent, run *domain.ReleaseRun) []dom
 }
 
 func executionKey(adapter, idempotencyKey string) string { return adapter + "\x00" + idempotencyKey }
+func runnerNonceKey(tenant, runnerGroup, nonce string) string {
+	return tenant + "\x00" + runnerGroup + "\x00" + nonce
+}
+func runnerIdempotencyKey(tenant, runnerGroup, key string) string {
+	return tenant + "\x00" + runnerGroup + "\x00" + key
+}
 
 func cloneRun(run *domain.ReleaseRun) *domain.ReleaseRun {
 	data, err := json.Marshal(run)

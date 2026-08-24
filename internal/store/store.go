@@ -1,10 +1,12 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"time"
 
 	"agentwritegateway/internal/domain"
+	"agentwritegateway/pkg/protocol"
 )
 
 var (
@@ -12,6 +14,7 @@ var (
 	ErrConflict             = errors.New("release run state version conflict")
 	ErrDuplicateExecution   = errors.New("duplicate adapter idempotency key")
 	ErrUnknownExternalState = errors.New("external execution state is unknown")
+	ErrJournalUnavailable   = errors.New("runner journal is unavailable")
 )
 
 // Store is retained as the compatibility contract used by the Packet 00/01
@@ -48,8 +51,41 @@ type ExecutionRecord struct {
 	UpdatedAt           time.Time
 }
 
+type RunnerActionStatus string
+
+const (
+	RunnerActionReserved  RunnerActionStatus = "RESERVED"
+	RunnerActionSucceeded RunnerActionStatus = "SUCCEEDED"
+	RunnerActionUnknown   RunnerActionStatus = "UNKNOWN"
+	RunnerActionRejected  RunnerActionStatus = "REJECTED"
+)
+
+type RunnerActionRecord struct {
+	GrantID        string
+	RunID          string
+	StepID         string
+	TenantID       string
+	RunnerGroup    string
+	Nonce          string
+	IdempotencyKey string
+	RequestHash    string
+	Status         RunnerActionStatus
+	Result         protocol.Result
+	StateVersion   int64
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type RunnerJournal interface {
+	GetRunnerAction(context.Context, string, string, string) (RunnerActionRecord, error)
+	ReserveRunnerAction(context.Context, RunnerActionRecord, domain.AuditEvent) (RunnerActionRecord, bool, error)
+	CompleteRunnerAction(context.Context, RunnerActionRecord, int64, domain.AuditEvent) error
+	PendingRunnerActions(context.Context, string, string, int) ([]RunnerActionRecord, error)
+}
+
 type DurableStore interface {
 	Store
+	RunnerJournal
 	CreateRunAtomic(*domain.ReleaseRun, []domain.AuditEvent, []domain.OutboxEvent) (*domain.ReleaseRun, bool, error)
 	UpdateRunAtomic(*domain.ReleaseRun, int64, []domain.AuditEvent, []domain.OutboxEvent) error
 	ReserveExecution(ExecutionRecord, domain.AuditEvent, domain.OutboxEvent) (ExecutionRecord, bool, error)
