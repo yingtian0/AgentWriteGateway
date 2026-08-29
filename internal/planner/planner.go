@@ -373,17 +373,23 @@ func (p *Planner) PlanIntent(intent domain.ReleaseIntent) (domain.ReleasePlan, e
 			phaseNumbers = append(phaseNumbers, phase[name])
 		}
 		step := domain.PlanStep{
-			Service:        name,
-			DesiredVersion: change.DesiredVersion,
-			Phase:          phase[name],
-			Profile:        environment.profile,
-			Dependencies:   sortedDependencies(definition.dependencies),
-			ContractHash:   definition.contractHash,
-			ProfileHash:    p.profileHashes[environment.profile],
-			ChangeHash:     changeHash,
+			Service:              name,
+			DesiredVersion:       change.DesiredVersion,
+			Phase:                phase[name],
+			Profile:              environment.profile,
+			Dependencies:         sortedDependencies(definition.dependencies),
+			ContractHash:         definition.contractHash,
+			ProfileHash:          p.profileHashes[environment.profile],
+			ChangeHash:           changeHash,
+			VerificationRequired: true,
+			ObservationWindow:    "1m",
+			RollbackMode:         domain.RollbackAutomatic,
 		}
 		if releaseProfile, ok := p.profiles[environment.profile]; ok {
 			step.RequiredCapabilities = sortedCapabilities(releaseProfile.Spec.RequiredCapabilities)
+			step.VerificationRequired = releaseProfile.Spec.Verification.Required
+			step.ObservationWindow = releaseProfile.Spec.Verification.ObservationWindow
+			step.RollbackMode = domain.RollbackMode(releaseProfile.Spec.Rollback.Mode)
 		}
 		byPhase[phase[name]] = append(byPhase[phase[name]], step)
 	}

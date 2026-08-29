@@ -6,7 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"agentwritegateway/internal/audit"
 	"agentwritegateway/internal/domain"
+	"agentwritegateway/internal/executor"
+	"agentwritegateway/pkg/adapter"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -109,6 +112,16 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 			return run, nil
 		}
 		step.Execution = &deployed.Execution
+		if !step.VerificationRequired {
+			step.Status = domain.StepSucceeded
+			succeeded[step.Service] = true
+			run.UpdatedAt = workflow.Now(ctx).UTC()
+			run, err = persist(activityContext, run, nil, "step.succeeded")
+			if err != nil {
+				return run, err
+			}
+			continue
+		}
 		step.Status = domain.StepVerifying
 		run.UpdatedAt = workflow.Now(ctx).UTC()
 		run, err = persist(activityContext, run, nil, "deployment.started")
@@ -116,12 +129,10 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 			return run, err
 		}
 		step = &run.Steps[index]
-		var verification struct {
-			Healthy       bool
-			Reason        string
-			ObservedValue float64
-			Threshold     float64
+		if err := workflow.Sleep(ctx, observationDuration(step.ObservationWindow)); err != nil {
+			return run, err
 		}
+		var verification executor.VerificationResult
 		if err := workflow.ExecuteActivity(activityContext, ActivityVerify, VerifyInput{Deployment: deployed.Deployment}).Get(activityContext, &verification); err != nil {
 			step.Status = domain.StepBlocked
 			step.Failure = "verification unavailable: " + err.Error()
@@ -130,8 +141,16 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 			run.UpdatedAt = workflow.Now(ctx).UTC()
 			return persist(activityContext, run, nil, "verification.unavailable")
 		}
-		step.Verification = &domain.Verification{Healthy: verification.Healthy, Reason: verification.Reason, ObservedValue: verification.ObservedValue, Threshold: verification.Threshold, CheckedAt: workflow.Now(ctx).UTC()}
-		if !verification.Healthy {
+		step.Verification = verificationProjection(verification, workflow.Now(ctx).UTC())
+		if verification.Outcome() != adapter.VerificationPass {
+			if step.RollbackMode != domain.RollbackAutomatic {
+				step.Status = domain.StepEscalated
+				step.Failure = "verification " + string(verification.Outcome()) + "; automatic rollback is not authorized: " + string(step.RollbackMode)
+				run.Status = domain.RunEscalated
+				cancelDownstream(&run, index+1)
+				run.UpdatedAt = workflow.Now(ctx).UTC()
+				return persist(activityContext, run, []AuditIntent{{ActorType: "system", ActorID: "verifier", Action: "deployment.verify", ResourceType: "service", ResourceID: step.Service, Result: string(verification.Outcome()), Details: audit.EvidenceDetails(verification.Evidence)}}, "release.escalated")
+			}
 			step.Status = domain.StepRollingBack
 			run.UpdatedAt = workflow.Now(ctx).UTC()
 			run, err = persist(activityContext, run, nil, "rollback.started")
@@ -139,14 +158,33 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 				return run, err
 			}
 			step = &run.Steps[index]
-			if err := workflow.ExecuteActivity(activityContext, ActivityRollback, RollbackInput{Deploy: deployInput, Deployment: deployed.Deployment}).Get(activityContext, nil); err != nil {
+			var rolledBack RollbackResult
+			if err := workflow.ExecuteActivity(activityContext, ActivityRollback, RollbackInput{Deploy: deployInput, Deployment: deployed.Deployment}).Get(activityContext, &rolledBack); err != nil {
 				step.Status = domain.StepEscalated
 				step.Failure = "rollback failed or unknown: " + err.Error()
 				run.Status = domain.RunEscalated
 			} else {
-				step.Status = domain.StepRolledBack
-				step.Failure = verification.Reason
-				run.Status = domain.RunFailed
+				step.RollbackExecution = &rolledBack.Execution
+				if err := workflow.Sleep(ctx, observationDuration(step.ObservationWindow)); err != nil {
+					return run, err
+				}
+				var rollbackVerification executor.VerificationResult
+				if err := workflow.ExecuteActivity(activityContext, ActivityVerify, VerifyInput{Deployment: rolledBack.Deployment}).Get(activityContext, &rollbackVerification); err != nil {
+					step.Status = domain.StepEscalated
+					step.Failure = "rollback verification unavailable: " + err.Error()
+					run.Status = domain.RunEscalated
+				} else {
+					step.RollbackVerification = verificationProjection(rollbackVerification, workflow.Now(ctx).UTC())
+					if rollbackVerification.Outcome() != adapter.VerificationPass {
+						step.Status = domain.StepEscalated
+						step.Failure = "rollback verification did not pass: " + string(rollbackVerification.Outcome())
+						run.Status = domain.RunEscalated
+					} else {
+						step.Status = domain.StepRolledBack
+						step.Failure = verification.Reason
+						run.Status = domain.RunFailed
+					}
+				}
 			}
 			cancelDownstream(&run, index+1)
 			run.UpdatedAt = workflow.Now(ctx).UTC()
@@ -155,7 +193,7 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 		step.Status = domain.StepSucceeded
 		succeeded[step.Service] = true
 		run.UpdatedAt = workflow.Now(ctx).UTC()
-		run, err = persist(activityContext, run, []AuditIntent{{ActorType: "system", ActorID: "verifier", Action: "deployment.verify", ResourceType: "service", ResourceID: step.Service, Result: "SUCCEEDED"}}, "step.succeeded")
+		run, err = persist(activityContext, run, []AuditIntent{{ActorType: "system", ActorID: "verifier", Action: "deployment.verify", ResourceType: "service", ResourceID: step.Service, Result: "SUCCEEDED", Details: audit.EvidenceDetails(verification.Evidence)}}, "step.succeeded")
 		if err != nil {
 			return run, err
 		}
@@ -163,6 +201,19 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 	run.Status = domain.RunSucceeded
 	run.UpdatedAt = workflow.Now(ctx).UTC()
 	return persist(activityContext, run, []AuditIntent{{ActorType: "system", ActorID: "temporal", Action: "release.workflow.complete", ResourceType: "release_run", ResourceID: run.ID, Result: "SUCCEEDED"}}, "release.succeeded")
+}
+
+func verificationProjection(result executor.VerificationResult, checkedAt time.Time) *domain.Verification {
+	outcome := result.Outcome()
+	return &domain.Verification{Status: domain.VerificationStatus(outcome), Healthy: outcome == adapter.VerificationPass, Reason: result.Reason, ObservedValue: result.ObservedValue, Threshold: result.Threshold, CheckedAt: checkedAt, Evidence: domain.Evidence{Source: result.Evidence.Source, QueryHash: result.Evidence.QueryHash, WindowFrom: result.Evidence.Window.From, WindowTo: result.Evidence.Window.To, ObservedAt: result.Evidence.ObservedAt, ObservedValue: result.Evidence.ObservedValue, Threshold: result.Evidence.Threshold, AdapterVersion: result.Evidence.AdapterVersion, EvidenceHash: result.Evidence.EvidenceHash}}
+}
+
+func observationDuration(value string) time.Duration {
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration <= 0 {
+		return time.Second
+	}
+	return duration
 }
 
 func persist(ctx workflow.Context, run domain.ReleaseRun, audits []AuditIntent, eventType string) (domain.ReleaseRun, error) {

@@ -13,6 +13,7 @@ import (
 	"agentwritegateway/internal/executor"
 	"agentwritegateway/internal/policy"
 	"agentwritegateway/internal/store"
+	verificationcore "agentwritegateway/internal/verification"
 
 	"go.temporal.io/sdk/temporal"
 )
@@ -65,6 +66,11 @@ type VerifyInput struct{ Deployment executor.Deployment }
 
 type RollbackInput struct {
 	Deploy     DeployInput
+	Deployment executor.Deployment
+}
+
+type RollbackResult struct {
+	Execution  domain.Execution
 	Deployment executor.Deployment
 }
 
@@ -156,33 +162,52 @@ func (a *Activities) Verify(ctx context.Context, input VerifyInput) (executor.Ve
 	if err != nil {
 		return executor.VerificationResult{}, &ClassifiedError{Class: ErrorRetryable, Operation: "verify", Err: err}
 	}
+	if result.Evidence.Status != result.Outcome() {
+		return executor.VerificationResult{}, &ClassifiedError{Class: ErrorTerminal, Operation: "verify", Err: errors.New("verification outcome and evidence disagree")}
+	}
+	if err := verificationcore.ValidateEvidence(result.Evidence); err != nil {
+		return executor.VerificationResult{}, &ClassifiedError{Class: ErrorTerminal, Operation: "verify", Err: err}
+	}
 	return result, nil
 }
 
-func (a *Activities) Rollback(ctx context.Context, input RollbackInput) error {
+func (a *Activities) Rollback(ctx context.Context, input RollbackInput) (RollbackResult, error) {
 	key := input.Deploy.IdempotencyKey + "/rollback"
 	now := a.Now().UTC()
 	record := store.ExecutionRecord{ID: newID("rollback"), RunID: input.Deploy.RunID, Service: input.Deploy.Service, Adapter: a.AdapterName + ".rollback", IdempotencyKey: key, CreatedAt: now, UpdatedAt: now}
 	audit := a.auditFor(input.Deploy.RunID, input.Deploy.RequestedBy, AuditIntent{ActorType: "system", ActorID: "workflow-worker", Action: "rollback.reserve", ResourceType: "service", ResourceID: input.Deploy.Service, Result: "AUTHORIZED"}, now)
 	reserved, created, err := a.Store.ReserveExecution(record, audit, a.outbox("execution", record.ID, "rollback.reserved", nil))
 	if err != nil {
-		return err
+		return RollbackResult{}, err
 	}
 	if !created {
 		if reserved.Status == store.ExecutionSucceeded {
-			return nil
+			deployment := executor.Deployment{ExternalID: reserved.ExternalExecutionID}
+			if value, ok := reserved.Payload["started_at"].(string); ok {
+				deployment.StartedAt, _ = time.Parse(time.RFC3339Nano, value)
+			}
+			if value, ok := reserved.Payload["finished_at"].(string); ok {
+				deployment.FinishedAt, _ = time.Parse(time.RFC3339Nano, value)
+			}
+			return RollbackResult{Execution: domain.Execution{ID: reserved.ID, Adapter: reserved.Adapter, IdempotencyKey: reserved.IdempotencyKey, Status: string(reserved.Status), ExternalExecutionID: reserved.ExternalExecutionID, StartedAt: deployment.StartedAt, FinishedAt: deployment.FinishedAt}, Deployment: deployment}, nil
 		}
-		return temporal.NewNonRetryableApplicationError("rollback state requires reconciliation", string(ErrorUnknownExternalState), store.ErrUnknownExternalState)
+		return RollbackResult{}, temporal.NewNonRetryableApplicationError("rollback state requires reconciliation", string(ErrorUnknownExternalState), store.ErrUnknownExternalState)
 	}
-	if err := a.Executor.Rollback(ctx, input.Deployment); err != nil {
+	deployment, err := a.Executor.Rollback(ctx, input.Deployment)
+	if err != nil {
 		reserved.Status = store.ExecutionUnknown
 		reserved.UpdatedAt = a.Now().UTC()
 		_ = a.Store.CompleteExecution(reserved, reserved.StateVersion, a.auditFor(input.Deploy.RunID, input.Deploy.RequestedBy, AuditIntent{ActorType: "system", ActorID: "workflow-worker", Action: "rollback.result", ResourceType: "service", ResourceID: input.Deploy.Service, Result: "UNKNOWN"}, reserved.UpdatedAt), a.outbox("execution", reserved.ID, "rollback.unknown", nil))
-		return temporal.NewNonRetryableApplicationError("rollback result is unknown", string(ErrorUnknownExternalState), err)
+		return RollbackResult{}, temporal.NewNonRetryableApplicationError("rollback result is unknown", string(ErrorUnknownExternalState), err)
 	}
 	reserved.Status = store.ExecutionSucceeded
+	reserved.ExternalExecutionID = deployment.ExternalID
+	reserved.Payload = map[string]any{"started_at": deployment.StartedAt.UTC().Format(time.RFC3339Nano), "finished_at": deployment.FinishedAt.UTC().Format(time.RFC3339Nano)}
 	reserved.UpdatedAt = a.Now().UTC()
-	return a.Store.CompleteExecution(reserved, reserved.StateVersion, a.auditFor(input.Deploy.RunID, input.Deploy.RequestedBy, AuditIntent{ActorType: "system", ActorID: "workflow-worker", Action: "rollback.result", ResourceType: "service", ResourceID: input.Deploy.Service, Result: "SUCCEEDED"}, reserved.UpdatedAt), a.outbox("execution", reserved.ID, "rollback.succeeded", nil))
+	if err := a.Store.CompleteExecution(reserved, reserved.StateVersion, a.auditFor(input.Deploy.RunID, input.Deploy.RequestedBy, AuditIntent{ActorType: "system", ActorID: "workflow-worker", Action: "rollback.result", ResourceType: "service", ResourceID: input.Deploy.Service, Result: "SUCCEEDED", Details: map[string]any{"external_execution_id": deployment.ExternalID}}, reserved.UpdatedAt), a.outbox("execution", reserved.ID, "rollback.succeeded", nil)); err != nil {
+		return RollbackResult{}, temporal.NewNonRetryableApplicationError("rollback succeeded but persistence is unknown", string(ErrorUnknownExternalState), err)
+	}
+	return RollbackResult{Execution: domain.Execution{ID: reserved.ID, Adapter: reserved.Adapter, IdempotencyKey: reserved.IdempotencyKey, Status: string(reserved.Status), ExternalExecutionID: deployment.ExternalID, StartedAt: deployment.StartedAt, FinishedAt: deployment.FinishedAt}, Deployment: deployment}, nil
 }
 
 func (a *Activities) audit(run domain.ReleaseRun, intent AuditIntent) domain.AuditEvent {

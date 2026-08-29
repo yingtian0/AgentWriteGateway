@@ -69,7 +69,7 @@ func (r *Releases) start(ctx context.Context, request domain.ReleaseRequest, pla
 	}
 	for _, phase := range plan.Phases {
 		for _, planned := range phase.Steps {
-			run.Steps = append(run.Steps, domain.ReleaseStep{Service: planned.Service, Phase: phase.Number, Status: domain.StepPending, Change: changes[planned.Service]})
+			run.Steps = append(run.Steps, domain.ReleaseStep{Service: planned.Service, Phase: phase.Number, Status: domain.StepPending, Change: changes[planned.Service], VerificationRequired: planned.VerificationRequired, ObservationWindow: planned.ObservationWindow, RollbackMode: planned.RollbackMode})
 		}
 	}
 	audit := domain.AuditEvent{ID: newID("audit"), CorrelationID: run.ID, ActorType: "user", ActorID: request.RequestedBy, DelegatedBy: request.RequestedBy, Action: "release.start", ResourceType: "release_run", ResourceID: run.ID, Result: "ACCEPTED", Details: map[string]any{"plan_hash": plan.Hash, "workflow_id": run.WorkflowID}, Timestamp: now}
