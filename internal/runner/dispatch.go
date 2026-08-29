@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"agentwritegateway/internal/identity"
+	"agentwritegateway/pkg/adapter"
+	"agentwritegateway/pkg/credentials"
 	"agentwritegateway/pkg/protocol"
 )
 
@@ -34,17 +36,8 @@ func (p ProofReferences) VerifyApprovals(_ context.Context, grant protocol.Actio
 	return nil
 }
 
-type Credential struct {
-	Value     []byte
-	ExpiresAt time.Time
-}
-
-type CredentialRequest struct {
-	TenantID    string
-	Service     string
-	Environment string
-	Capability  protocol.Capability
-}
+type Credential = credentials.Credential
+type CredentialRequest = credentials.Request
 
 type CredentialBroker interface {
 	Acquire(context.Context, CredentialRequest) (Credential, error)
@@ -57,6 +50,7 @@ type AdapterRequest struct {
 	Target         protocol.Target
 	Action         protocol.Action
 	IdempotencyKey string
+	DispatchedAt   time.Time
 }
 
 type AdapterResult struct {
@@ -70,5 +64,67 @@ type TypedAdapter interface {
 }
 
 type Reconciler interface {
-	Reconcile(context.Context, string) (AdapterResult, bool, error)
+	Reconcile(context.Context, AdapterRequest, Credential) (AdapterResult, bool, error)
+}
+
+// SDKDispatcher is the only bridge from an authorized Runner request to the
+// public typed Adapter SDK. It exposes neither workflow paths nor URLs.
+type SDKDispatcher struct {
+	Adapter adapter.DeployAdapter
+	Now     func() time.Time
+}
+
+func (d *SDKDispatcher) CredentialProvider() string { return adapter.ProviderGitHubActions }
+
+func (d *SDKDispatcher) Execute(ctx context.Context, request AdapterRequest, credential Credential) (AdapterResult, error) {
+	if d.Adapter == nil {
+		return AdapterResult{}, fmt.Errorf("deploy adapter unavailable")
+	}
+	target := adapter.Target{Service: request.Target.Service, Environment: request.Target.Environment}
+	var deployment adapter.Deployment
+	var err error
+	switch request.Action.Capability {
+	case protocol.CapabilityDeploy:
+		deployment, err = d.Adapter.Deploy(ctx, adapter.DeployRequest{Target: target, ArtifactDigest: request.Action.ArtifactDigest, IdempotencyKey: request.IdempotencyKey}, credential)
+	case protocol.CapabilityRollback:
+		deployment, err = d.Adapter.Rollback(ctx, adapter.RollbackRequest{Target: target, OriginalDeployment: adapter.Deployment{ExternalExecutionID: request.Action.ExternalExecutionID}, IdempotencyKey: request.IdempotencyKey}, credential)
+	default:
+		return AdapterResult{}, fmt.Errorf("unsupported typed action %q", request.Action.Capability)
+	}
+	if err != nil {
+		return AdapterResult{}, err
+	}
+	completedAt := deployment.FinishedAt
+	if completedAt.IsZero() {
+		completedAt = d.now()
+	}
+	return AdapterResult{ExternalExecutionID: deployment.ExternalExecutionID, CompletedAt: completedAt}, nil
+}
+
+func (d *SDKDispatcher) Reconcile(ctx context.Context, request AdapterRequest, credential Credential) (AdapterResult, bool, error) {
+	if d.Adapter == nil {
+		return AdapterResult{}, false, fmt.Errorf("deploy adapter unavailable")
+	}
+	dispatchedAt := request.DispatchedAt
+	if dispatchedAt.IsZero() {
+		dispatchedAt = d.now().Add(-24 * time.Hour)
+	}
+	result, err := d.Adapter.Reconcile(ctx, adapter.ReconcileRequest{IdempotencyKey: request.IdempotencyKey, DispatchedAt: dispatchedAt}, credential)
+	if err != nil {
+		return AdapterResult{}, false, err
+	}
+	if result.Status == adapter.ReconcileNotFound || result.Status == adapter.ReconcilePending {
+		return AdapterResult{}, false, nil
+	}
+	if result.Status == adapter.ReconcileFailed {
+		return AdapterResult{}, false, fmt.Errorf("external execution failed during reconciliation")
+	}
+	return AdapterResult{ExternalExecutionID: result.Deployment.ExternalExecutionID, CompletedAt: result.Deployment.FinishedAt}, true, nil
+}
+
+func (d *SDKDispatcher) now() time.Time {
+	if d.Now != nil {
+		return d.Now().UTC()
+	}
+	return time.Now().UTC()
 }

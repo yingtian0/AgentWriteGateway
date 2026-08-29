@@ -13,6 +13,7 @@ import (
 	"agentwritegateway/internal/identity"
 	"agentwritegateway/internal/policy"
 	"agentwritegateway/internal/store"
+	"agentwritegateway/pkg/credentials"
 	"agentwritegateway/pkg/protocol"
 )
 
@@ -49,6 +50,7 @@ func TestRunnerRejectsEveryUnsafeGrantBeforeAdapter(t *testing.T) {
 		{"missing approval", func(t *testing.T, f *runnerFixture) { f.grant.ApprovalProofs = nil; f.resignWithPolicyHash(t) }},
 		{"unsupported capability", func(t *testing.T, f *runnerFixture) {
 			f.grant.Action.Capability = protocol.CapabilityRollback
+			f.grant.Action.ExternalExecutionID = "external-original"
 			f.syncPinnedTargetAction()
 			f.resignWithPolicyHash(t)
 		}},
@@ -115,7 +117,7 @@ func TestConcurrentDuplicateGrantCreatesAtMostOneWrite(t *testing.T) {
 func TestDisconnectedRunnerMayReconcileButCannotStartWrite(t *testing.T) {
 	fixture := newRunnerFixture(t)
 	hash, _ := protocol.GrantHash(fixture.grant)
-	record := store.RunnerActionRecord{GrantID: fixture.grant.GrantID, RunID: fixture.grant.RunID, StepID: fixture.grant.StepID, TenantID: fixture.grant.TenantID, RunnerGroup: fixture.grant.RunnerGroup, Nonce: fixture.grant.Nonce, IdempotencyKey: fixture.grant.IdempotencyKey, RequestHash: hash, CreatedAt: fixture.now, UpdatedAt: fixture.now}
+	record := store.RunnerActionRecord{GrantID: fixture.grant.GrantID, RunID: fixture.grant.RunID, StepID: fixture.grant.StepID, TenantID: fixture.grant.TenantID, RunnerGroup: fixture.grant.RunnerGroup, Nonce: fixture.grant.Nonce, IdempotencyKey: fixture.grant.IdempotencyKey, RequestHash: hash, Target: fixture.grant.Target, Action: fixture.grant.Action, CreatedAt: fixture.now, UpdatedAt: fixture.now}
 	reserved, _, err := fixture.journal.ReserveRunnerAction(context.Background(), record, testAudit(fixture.now))
 	if err != nil {
 		t.Fatal(err)
@@ -133,8 +135,8 @@ func TestDisconnectedRunnerMayReconcileButCannotStartWrite(t *testing.T) {
 	if err != nil || loaded.Status != store.RunnerActionSucceeded {
 		t.Fatalf("loaded=%#v err=%v", loaded, err)
 	}
-	if fixture.adapter.Calls() != 0 || fixture.credentials.Calls() != 0 {
-		t.Fatalf("reconcile started a new write")
+	if fixture.adapter.Calls() != 0 || fixture.credentials.Calls() != 1 {
+		t.Fatalf("reconcile started a write or failed to obtain one read credential")
 	}
 }
 
@@ -240,7 +242,7 @@ type countingCredentials struct {
 
 type staticReconciler struct{ result AdapterResult }
 
-func (r staticReconciler) Reconcile(context.Context, string) (AdapterResult, bool, error) {
+func (r staticReconciler) Reconcile(context.Context, AdapterRequest, Credential) (AdapterResult, bool, error) {
 	return r.result, true, nil
 }
 
@@ -248,7 +250,7 @@ func (b *countingCredentials) Acquire(_ context.Context, _ CredentialRequest) (C
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.calls++
-	return Credential{Value: []byte("redacted"), ExpiresAt: b.now.Add(time.Minute)}, nil
+	return credentials.New(map[string][]byte{"token": []byte("redacted")}, b.now.Add(time.Minute)), nil
 }
 func (b *countingCredentials) Calls() int { b.mu.Lock(); defer b.mu.Unlock(); return b.calls }
 

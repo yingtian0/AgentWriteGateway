@@ -55,6 +55,27 @@ func TestCanonicalGrantRejectsNonHexDigest(t *testing.T) {
 	}
 }
 
+func TestRollbackGrantBindsOriginalExternalExecution(t *testing.T) {
+	grant := protocolFixture()
+	grant.Action.Capability = CapabilityRollback
+	if _, err := CanonicalGrantPayload(grant); err == nil {
+		t.Fatal("rollback without original external execution was accepted")
+	}
+	grant.Action.ExternalExecutionID = "workflow-run-123"
+	first, err := GrantHash(grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant.Action.ExternalExecutionID = "workflow-run-456"
+	second, err := GrantHash(grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("original external execution is not bound to the grant")
+	}
+}
+
 func protocolFixture() ActionGrant {
 	now := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
 	digest := "sha256:" + strings.Repeat("a", 64)

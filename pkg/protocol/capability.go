@@ -8,8 +8,9 @@ const (
 )
 
 type Action struct {
-	Capability     Capability `json:"capability"`
-	ArtifactDigest string     `json:"artifact_digest"`
+	Capability          Capability `json:"capability"`
+	ArtifactDigest      string     `json:"artifact_digest"`
+	ExternalExecutionID string     `json:"external_execution_id,omitempty"`
 }
 
 type Target struct {

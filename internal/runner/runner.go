@@ -10,6 +10,7 @@ import (
 	"agentwritegateway/internal/identity"
 	"agentwritegateway/internal/policy"
 	"agentwritegateway/internal/store"
+	"agentwritegateway/pkg/credentials"
 	"agentwritegateway/pkg/protocol"
 )
 
@@ -161,7 +162,7 @@ func (r *Runner) Execute(ctx context.Context, actionGrant protocol.ActionGrant) 
 		return r.reject(actionGrant, ReasonPolicyMismatch, nil)
 	}
 	now := r.now()
-	record := store.RunnerActionRecord{GrantID: actionGrant.GrantID, RunID: actionGrant.RunID, StepID: actionGrant.StepID, TenantID: actionGrant.TenantID, RunnerGroup: actionGrant.RunnerGroup, Nonce: actionGrant.Nonce, IdempotencyKey: actionGrant.IdempotencyKey, RequestHash: requestHash, CreatedAt: now, UpdatedAt: now}
+	record := store.RunnerActionRecord{GrantID: actionGrant.GrantID, RunID: actionGrant.RunID, StepID: actionGrant.StepID, TenantID: actionGrant.TenantID, RunnerGroup: actionGrant.RunnerGroup, Nonce: actionGrant.Nonce, IdempotencyKey: actionGrant.IdempotencyKey, RequestHash: requestHash, Target: actionGrant.Target, Action: actionGrant.Action, CreatedAt: now, UpdatedAt: now}
 	record, created, err := r.Journal.ReserveRunnerAction(ctx, record, journalAudit(auditID(actionGrant.GrantID, "reserve", 1), actionGrant.GrantID, "runner.action.reserve", "AUTHORIZED", now, map[string]any{"request_hash": requestHash}))
 	if err != nil {
 		return r.reject(actionGrant, ReasonJournalUnavailable, err)
@@ -172,11 +173,19 @@ func (r *Runner) Execute(ctx context.Context, actionGrant protocol.ActionGrant) 
 	if r.Credentials == nil || r.Adapter == nil {
 		return r.failReserved(ctx, record, actionGrant, ReasonCredential, errors.New("credential or adapter unavailable"))
 	}
-	credential, err := r.Credentials.Acquire(ctx, CredentialRequest{TenantID: actionGrant.TenantID, Service: actionGrant.Target.Service, Environment: actionGrant.Target.Environment, Capability: actionGrant.Action.Capability})
+	provider := "typed-adapter"
+	if configured, ok := r.Adapter.(interface{ CredentialProvider() string }); ok {
+		provider = configured.CredentialProvider()
+	}
+	purpose := credentials.PurposeDeploy
+	if actionGrant.Action.Capability == protocol.CapabilityRollback {
+		purpose = credentials.PurposeRollback
+	}
+	credential, err := r.Credentials.Acquire(ctx, CredentialRequest{Provider: provider, TenantID: actionGrant.TenantID, Service: actionGrant.Target.Service, Environment: actionGrant.Target.Environment, Purpose: purpose})
 	if err != nil {
 		return r.failReserved(ctx, record, actionGrant, ReasonCredential, err)
 	}
-	adapterResult, err := r.Adapter.Execute(ctx, AdapterRequest{GrantID: actionGrant.GrantID, RunID: actionGrant.RunID, StepID: actionGrant.StepID, Target: actionGrant.Target, Action: actionGrant.Action, IdempotencyKey: actionGrant.IdempotencyKey}, credential)
+	adapterResult, err := r.Adapter.Execute(ctx, AdapterRequest{GrantID: actionGrant.GrantID, RunID: actionGrant.RunID, StepID: actionGrant.StepID, Target: actionGrant.Target, Action: actionGrant.Action, IdempotencyKey: actionGrant.IdempotencyKey, DispatchedAt: now}, credential)
 	if err != nil {
 		return r.failReserved(ctx, record, actionGrant, ReasonExternalUnknown, err)
 	}
