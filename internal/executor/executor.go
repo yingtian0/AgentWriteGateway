@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"agentwritegateway/pkg/adapter"
 )
 
 type DeployRequest struct {
@@ -22,36 +24,52 @@ type Deployment struct {
 }
 
 type VerificationResult struct {
+	Status        adapter.VerificationStatus
 	Healthy       bool
 	Reason        string
 	ObservedValue float64
 	Threshold     float64
+	Evidence      adapter.Evidence
+}
+
+func (r VerificationResult) Outcome() adapter.VerificationStatus {
+	if r.Status.Valid() {
+		return r.Status
+	}
+	if r.Healthy {
+		return adapter.VerificationPass
+	}
+	return adapter.VerificationFail
 }
 
 type ReleaseExecutor interface {
 	Deploy(context.Context, DeployRequest) (Deployment, error)
 	Verify(context.Context, Deployment) (VerificationResult, error)
-	Rollback(context.Context, Deployment) error
+	Rollback(context.Context, Deployment) (Deployment, error)
 }
 
 type MockBehavior struct {
-	DeployError   bool
-	VerifyHealthy bool
-	VerifyError   bool
-	RollbackError bool
+	DeployError          bool
+	VerifyHealthy        bool
+	VerifyError          bool
+	RollbackError        bool
+	VerifyStatus         adapter.VerificationStatus
+	RollbackVerifyStatus adapter.VerificationStatus
+	RollbackVerifyError  bool
 }
 
 type Mock struct {
-	mu          sync.Mutex
-	deployments map[string]Deployment
-	serviceByID map[string]string
-	behavior    map[string]MockBehavior
-	deployCalls map[string]int
+	mu           sync.Mutex
+	deployments  map[string]Deployment
+	serviceByID  map[string]string
+	rollbackByID map[string]bool
+	behavior     map[string]MockBehavior
+	deployCalls  map[string]int
 }
 
 func NewMock(behavior map[string]MockBehavior) *Mock {
 	return &Mock{
-		deployments: make(map[string]Deployment), serviceByID: make(map[string]string),
+		deployments: make(map[string]Deployment), serviceByID: make(map[string]string), rollbackByID: make(map[string]bool),
 		behavior: behavior, deployCalls: make(map[string]int),
 	}
 }
@@ -80,26 +98,58 @@ func (m *Mock) Verify(_ context.Context, deployment Deployment) (VerificationRes
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	behavior, configured := m.behavior[m.serviceByID[deployment.ExternalID]]
+	if m.rollbackByID[deployment.ExternalID] {
+		if behavior.RollbackVerifyError {
+			return VerificationResult{}, errors.New("simulated rollback metrics failure")
+		}
+		status := behavior.RollbackVerifyStatus
+		if !status.Valid() {
+			status = adapter.VerificationPass
+		}
+		return mockVerification(deployment, status, "simulated rollback verification"), nil
+	}
 	if behavior.VerifyError {
 		return VerificationResult{}, errors.New("simulated metrics failure")
 	}
-	if configured && !behavior.VerifyHealthy {
-		return VerificationResult{Healthy: false, Reason: "simulated error rate exceeded", ObservedValue: 8.3, Threshold: 1.0}, nil
+	status := behavior.VerifyStatus
+	if !status.Valid() && configured && !behavior.VerifyHealthy {
+		status = adapter.VerificationFail
 	}
-	return VerificationResult{Healthy: true, Reason: "mock health checks passed", ObservedValue: 0.1, Threshold: 1.0}, nil
+	if !status.Valid() {
+		status = adapter.VerificationPass
+	}
+	return mockVerification(deployment, status, "mock health check"), nil
 }
 
-func (m *Mock) Rollback(_ context.Context, deployment Deployment) error {
+func (m *Mock) Rollback(_ context.Context, deployment Deployment) (Deployment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.behavior[m.serviceByID[deployment.ExternalID]].RollbackError {
-		return errors.New("simulated rollback failure")
+		return Deployment{}, errors.New("simulated rollback failure")
 	}
-	return nil
+	now := time.Now().UTC()
+	rolledBack := Deployment{ExternalID: "rollback-" + deployment.ExternalID, StartedAt: now, FinishedAt: now}
+	m.serviceByID[rolledBack.ExternalID] = m.serviceByID[deployment.ExternalID]
+	m.rollbackByID[rolledBack.ExternalID] = true
+	return rolledBack, nil
 }
 
 func (m *Mock) DeployCalls(idempotencyKey string) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.deployCalls[idempotencyKey]
+}
+
+func mockVerification(deployment Deployment, status adapter.VerificationStatus, reason string) VerificationResult {
+	now := time.Now().UTC()
+	value := 0.1
+	if status == adapter.VerificationFail {
+		value = 8.3
+	}
+	evidence := adapter.Evidence{Status: status, ReasonCode: string(status), Source: "mock", QueryHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Window: adapter.ObservationWindow{From: deployment.StartedAt, To: now}, ObservedAt: now, ObservedValue: value, Threshold: 1, AdapterVersion: "mock/v1"}
+	if !evidence.Window.To.After(evidence.Window.From) {
+		evidence.Window.From = now.Add(-time.Minute)
+	}
+	evidence.EvidenceHash, _ = adapter.EvidenceHash(evidence)
+	return VerificationResult{Status: status, Healthy: status == adapter.VerificationPass, Reason: reason, ObservedValue: value, Threshold: 1, Evidence: evidence}
 }

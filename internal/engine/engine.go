@@ -14,6 +14,7 @@ import (
 	"agentwritegateway/internal/planner"
 	"agentwritegateway/internal/policy"
 	"agentwritegateway/internal/store"
+	"agentwritegateway/pkg/adapter"
 )
 
 var (
@@ -90,6 +91,7 @@ func (e *Engine) startPlanned(ctx context.Context, request domain.ReleaseRequest
 			run.Steps = append(run.Steps, domain.ReleaseStep{
 				Service: planned.Service, Phase: phase.Number,
 				Status: domain.StepPending, Change: changes[planned.Service],
+				VerificationRequired: planned.VerificationRequired, ObservationWindow: planned.ObservationWindow, RollbackMode: planned.RollbackMode,
 			})
 		}
 	}
@@ -366,22 +368,38 @@ func (e *Engine) advance(ctx context.Context, run *domain.ReleaseRun) error {
 			e.cancelDownstream(run, i+1)
 			return e.persist(run, expectedVersion)
 		}
-		step.Verification = &domain.Verification{
-			Healthy: verification.Healthy, Reason: verification.Reason,
-			ObservedValue: verification.ObservedValue, Threshold: verification.Threshold,
-			CheckedAt: e.now().UTC(),
-		}
-		if !verification.Healthy {
+		step.Verification = domainVerification(verification, e.now().UTC())
+		if verification.Outcome() != adapter.VerificationPass {
 			step.Status = domain.StepRollingBack
 			_ = e.audit(run, "system", "verifier", "rollback.start", "service", step.Service, "HEALTH_CHECK_FAILED", nil)
-			if err := e.executor.Rollback(ctx, deployment); err != nil {
+			if step.RollbackMode != domain.RollbackAutomatic {
+				step.Status = domain.StepEscalated
+				step.Failure = "automatic rollback is not authorized: " + string(step.RollbackMode)
+				run.Status = domain.RunEscalated
+				e.cancelDownstream(run, i+1)
+				return e.persist(run, expectedVersion)
+			}
+			rolledBack, err := e.executor.Rollback(ctx, deployment)
+			if err != nil {
 				step.Status = domain.StepEscalated
 				step.Failure = "rollback failed: " + err.Error()
 				run.Status = domain.RunEscalated
 			} else {
-				step.Status = domain.StepRolledBack
-				step.Failure = verification.Reason
-				run.Status = domain.RunFailed
+				step.RollbackExecution = &domain.Execution{ID: newID("rollback"), IdempotencyKey: key + "/rollback", ExternalExecutionID: rolledBack.ExternalID, StartedAt: rolledBack.StartedAt, FinishedAt: rolledBack.FinishedAt}
+				rollbackVerification, verifyErr := e.executor.Verify(ctx, rolledBack)
+				if verifyErr != nil || rollbackVerification.Outcome() != adapter.VerificationPass {
+					step.Status = domain.StepEscalated
+					step.Failure = "rollback verification failed or unavailable"
+					run.Status = domain.RunEscalated
+					if verifyErr == nil {
+						step.RollbackVerification = domainVerification(rollbackVerification, e.now().UTC())
+					}
+				} else {
+					step.RollbackVerification = domainVerification(rollbackVerification, e.now().UTC())
+					step.Status = domain.StepRolledBack
+					step.Failure = verification.Reason
+					run.Status = domain.RunFailed
+				}
 			}
 			e.cancelDownstream(run, i+1)
 			return e.persist(run, expectedVersion)
@@ -392,6 +410,11 @@ func (e *Engine) advance(ctx context.Context, run *domain.ReleaseRun) error {
 	}
 	run.Status = domain.RunSucceeded
 	return e.persist(run, expectedVersion)
+}
+
+func domainVerification(result executor.VerificationResult, checkedAt time.Time) *domain.Verification {
+	outcome := result.Outcome()
+	return &domain.Verification{Status: domain.VerificationStatus(outcome), Healthy: outcome == adapter.VerificationPass, Reason: result.Reason, ObservedValue: result.ObservedValue, Threshold: result.Threshold, CheckedAt: checkedAt, Evidence: domain.Evidence{Source: result.Evidence.Source, QueryHash: result.Evidence.QueryHash, WindowFrom: result.Evidence.Window.From, WindowTo: result.Evidence.Window.To, ObservedAt: result.Evidence.ObservedAt, ObservedValue: result.Evidence.ObservedValue, Threshold: result.Evidence.Threshold, AdapterVersion: result.Evidence.AdapterVersion, EvidenceHash: result.Evidence.EvidenceHash}}
 }
 
 func (e *Engine) persist(run *domain.ReleaseRun, expectedVersion int64) error {

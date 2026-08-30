@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"agentwritegateway/adapters/datadog"
+	"agentwritegateway/adapters/githubactions"
 	"agentwritegateway/pkg/protocol"
 
 	"go.yaml.in/yaml/v3"
@@ -28,6 +30,8 @@ type settings struct {
 	Identity      identitySettings      `yaml:"identity"`
 	Policy        policySettings        `yaml:"policy"`
 	Journal       journalSettings       `yaml:"journal"`
+	Adapters      adapterSettings       `yaml:"adapters"`
+	Credentials   credentialSettings    `yaml:"credentials"`
 	Capabilities  []protocol.Capability `yaml:"capabilities"`
 }
 type controlPlaneSettings struct {
@@ -46,6 +50,40 @@ type policySettings struct {
 }
 type journalSettings struct {
 	DatabaseURL string `yaml:"database_url"`
+}
+type adapterSettings struct {
+	GitHubActions githubActionsSettings `yaml:"github_actions"`
+	Datadog       datadogSettings       `yaml:"datadog"`
+}
+type githubActionsSettings struct {
+	Targets []githubTargetSettings `yaml:"targets"`
+}
+type githubTargetSettings struct {
+	Service          string `yaml:"service"`
+	Environment      string `yaml:"environment"`
+	Owner            string `yaml:"owner"`
+	Repository       string `yaml:"repository"`
+	DeployWorkflow   string `yaml:"deploy_workflow"`
+	RollbackWorkflow string `yaml:"rollback_workflow"`
+	Ref              string `yaml:"ref"`
+}
+type datadogSettings struct {
+	Site    datadog.Site           `yaml:"site"`
+	Queries []datadogQuerySettings `yaml:"queries"`
+}
+type datadogQuerySettings struct {
+	Service       string  `yaml:"service"`
+	Environment   string  `yaml:"environment"`
+	Expression    string  `yaml:"expression"`
+	Comparator    string  `yaml:"comparator"`
+	Threshold     float64 `yaml:"threshold"`
+	Aggregation   string  `yaml:"aggregation"`
+	MinimumPoints int     `yaml:"minimum_points"`
+	MaximumAge    string  `yaml:"maximum_age"`
+}
+type credentialSettings struct {
+	GitHubTokenFile       string `yaml:"github_token_file"`
+	DatadogCredentialFile string `yaml:"datadog_credential_file"`
 }
 
 func main() {
@@ -109,14 +147,59 @@ func load(path string) (settings, error) {
 	if result.Mode == "production" && !strings.HasPrefix(result.ControlPlane.Address, "https://") {
 		return settings{}, fmt.Errorf("production control plane address must use https")
 	}
+	if err := validateAdapters(result); err != nil {
+		return settings{}, err
+	}
 	return result, nil
+}
+
+func validateAdapters(configuration settings) error {
+	githubTargets := make(map[githubactions.TargetKey]githubactions.Target, len(configuration.Adapters.GitHubActions.Targets))
+	for _, target := range configuration.Adapters.GitHubActions.Targets {
+		key := githubactions.TargetKey{Service: target.Service, Environment: target.Environment}
+		if _, duplicate := githubTargets[key]; duplicate {
+			return fmt.Errorf("duplicate GitHub Actions target %s/%s", key.Service, key.Environment)
+		}
+		githubTargets[key] = githubactions.Target{Owner: target.Owner, Repository: target.Repository, DeployWorkflow: target.DeployWorkflow, RollbackWorkflow: target.RollbackWorkflow, Ref: target.Ref}
+	}
+	if len(githubTargets) > 0 {
+		if _, err := githubactions.New(githubactions.Config{Targets: githubTargets}, nil); err != nil {
+			return fmt.Errorf("GitHub Actions adapter: %w", err)
+		}
+	}
+	datadogQueries := make(map[datadog.QueryKey]datadog.Query, len(configuration.Adapters.Datadog.Queries))
+	for _, configured := range configuration.Adapters.Datadog.Queries {
+		maximumAge, err := time.ParseDuration(configured.MaximumAge)
+		if err != nil {
+			return fmt.Errorf("Datadog maximum_age for %s/%s: %w", configured.Service, configured.Environment, err)
+		}
+		key := datadog.QueryKey{Service: configured.Service, Environment: configured.Environment}
+		if _, duplicate := datadogQueries[key]; duplicate {
+			return fmt.Errorf("duplicate Datadog query %s/%s", key.Service, key.Environment)
+		}
+		datadogQueries[key] = datadog.Query{Expression: configured.Expression, Comparator: configured.Comparator, Threshold: configured.Threshold, Aggregation: configured.Aggregation, MinimumPoints: configured.MinimumPoints, MaximumAge: maximumAge}
+	}
+	if len(datadogQueries) > 0 {
+		if _, err := datadog.New(datadog.Config{Site: configuration.Adapters.Datadog.Site, Queries: datadogQueries}, nil); err != nil {
+			return fmt.Errorf("Datadog adapter: %w", err)
+		}
+	}
+	if configuration.Mode == "production" {
+		if len(githubTargets) == 0 || configuration.Credentials.GitHubTokenFile == "" {
+			return fmt.Errorf("production deploy requires allow-listed GitHub Actions targets and a Runner-local token file")
+		}
+		if len(datadogQueries) == 0 || configuration.Credentials.DatadogCredentialFile == "" {
+			return fmt.Errorf("production verification requires allow-listed Datadog queries and a Runner-local credential file")
+		}
+	}
+	return nil
 }
 
 func healthHandler(configuration settings) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(writer, `{"status":"alive","accepting_actions":false,"runner_id":%q,"runner_group":%q}`, configuration.RunnerID, configuration.RunnerGroup)
+		fmt.Fprintf(writer, `{"status":"alive","accepting_actions":false,"deploy_adapter":"github-actions","verification_adapter":"datadog","runner_id":%q,"runner_group":%q}`, configuration.RunnerID, configuration.RunnerGroup)
 	})
 	return mux
 }

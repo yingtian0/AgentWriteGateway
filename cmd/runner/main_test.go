@@ -49,6 +49,37 @@ capabilities: [cloud.generic]
 	}
 }
 
+func TestRunnerConfigRejectsArbitraryWorkflowPath(t *testing.T) {
+	path := writeConfig(t, `
+mode: development
+runner_id: runner-1
+runner_group: dev
+tenant_id: tenant-1
+control_plane:
+  address: https://control.example
+  issuer: https://control.example
+identity:
+  issuer: https://idp.example
+  audience: awg
+policy:
+  bundle_file: bundle.json
+adapters:
+  github_actions:
+    targets:
+      - service: identity
+        environment: staging
+        owner: acme
+        repository: releases
+        deploy_workflow: ../../arbitrary.yml
+        rollback_workflow: rollback.yml
+        ref: main
+capabilities: [release.deploy]
+`)
+	if _, err := load(path); err == nil || !strings.Contains(err.Error(), "workflow") {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func writeConfig(t *testing.T, contents string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "runner.yaml")

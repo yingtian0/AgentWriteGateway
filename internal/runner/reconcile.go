@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"agentwritegateway/internal/store"
+	"agentwritegateway/pkg/credentials"
 	"agentwritegateway/pkg/protocol"
 )
 
@@ -22,7 +23,23 @@ func (r *Runner) Reconcile(ctx context.Context, reconciler Reconciler, limit int
 		return err
 	}
 	for _, record := range records {
-		result, found, err := reconciler.Reconcile(ctx, record.IdempotencyKey)
+		if r.Credentials == nil {
+			return fmt.Errorf("reconciliation credential unavailable")
+		}
+		provider := "typed-adapter"
+		if configured, ok := reconciler.(interface{ CredentialProvider() string }); ok {
+			provider = configured.CredentialProvider()
+		}
+		purpose := credentials.PurposeDeploy
+		if record.Action.Capability == protocol.CapabilityRollback {
+			purpose = credentials.PurposeRollback
+		}
+		credential, err := r.Credentials.Acquire(ctx, CredentialRequest{Provider: provider, TenantID: record.TenantID, Service: record.Target.Service, Environment: record.Target.Environment, Purpose: purpose})
+		if err != nil {
+			continue
+		}
+		request := AdapterRequest{GrantID: record.GrantID, RunID: record.RunID, StepID: record.StepID, Target: record.Target, Action: record.Action, IdempotencyKey: record.IdempotencyKey, DispatchedAt: record.CreatedAt}
+		result, found, err := reconciler.Reconcile(ctx, request, credential)
 		if err != nil || !found {
 			continue
 		}

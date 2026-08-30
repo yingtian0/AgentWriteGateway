@@ -53,6 +53,9 @@ type PlanStep struct {
 	ContractHash         string       `json:"contract_hash,omitempty"`
 	ProfileHash          string       `json:"profile_hash,omitempty"`
 	ChangeHash           string       `json:"change_hash,omitempty"`
+	VerificationRequired bool         `json:"verification_required"`
+	ObservationWindow    string       `json:"observation_window,omitempty"`
+	RollbackMode         RollbackMode `json:"rollback_mode"`
 }
 
 type PlanPhase struct {
@@ -155,24 +158,61 @@ type Execution struct {
 	FinishedAt          time.Time `json:"finished_at"`
 }
 
-type Verification struct {
-	Healthy       bool      `json:"healthy"`
-	Reason        string    `json:"reason"`
-	ObservedValue float64   `json:"observed_value,omitempty"`
-	Threshold     float64   `json:"threshold,omitempty"`
-	CheckedAt     time.Time `json:"checked_at"`
+type VerificationStatus string
+
+const (
+	VerificationPass         VerificationStatus = "PASS"
+	VerificationFail         VerificationStatus = "FAIL"
+	VerificationInconclusive VerificationStatus = "INCONCLUSIVE"
+	VerificationMissing      VerificationStatus = "MISSING"
+)
+
+type Evidence struct {
+	Source         string    `json:"source"`
+	QueryHash      string    `json:"query_hash"`
+	WindowFrom     time.Time `json:"window_from"`
+	WindowTo       time.Time `json:"window_to"`
+	ObservedAt     time.Time `json:"observed_at"`
+	ObservedValue  float64   `json:"observed_value,omitempty"`
+	Threshold      float64   `json:"threshold,omitempty"`
+	AdapterVersion string    `json:"adapter_version"`
+	EvidenceHash   string    `json:"evidence_hash"`
 }
 
+type Verification struct {
+	Status        VerificationStatus `json:"status"`
+	Healthy       bool               `json:"healthy"` // compatibility projection; Status is authoritative.
+	Reason        string             `json:"reason"`
+	ObservedValue float64            `json:"observed_value,omitempty"`
+	Threshold     float64            `json:"threshold,omitempty"`
+	CheckedAt     time.Time          `json:"checked_at"`
+	Evidence      Evidence           `json:"evidence"`
+}
+
+type RollbackMode string
+
+const (
+	RollbackAutomatic        RollbackMode = "automatic"
+	RollbackApprovalRequired RollbackMode = "approval-required"
+	RollbackManualOnly       RollbackMode = "manual-only"
+	RollbackUnsupported      RollbackMode = "unsupported"
+)
+
 type ReleaseStep struct {
-	Service      string          `json:"service"`
-	Phase        int             `json:"phase"`
-	Status       StepStatus      `json:"status"`
-	Change       Change          `json:"change"`
-	Policy       *PolicyDecision `json:"policy,omitempty"`
-	Approval     *Approval       `json:"approval,omitempty"`
-	Execution    *Execution      `json:"execution,omitempty"`
-	Verification *Verification   `json:"verification,omitempty"`
-	Failure      string          `json:"failure,omitempty"`
+	Service              string          `json:"service"`
+	Phase                int             `json:"phase"`
+	Status               StepStatus      `json:"status"`
+	Change               Change          `json:"change"`
+	Policy               *PolicyDecision `json:"policy,omitempty"`
+	Approval             *Approval       `json:"approval,omitempty"`
+	Execution            *Execution      `json:"execution,omitempty"`
+	Verification         *Verification   `json:"verification,omitempty"`
+	VerificationRequired bool            `json:"verification_required"`
+	ObservationWindow    string          `json:"observation_window,omitempty"`
+	RollbackMode         RollbackMode    `json:"rollback_mode"`
+	RollbackExecution    *Execution      `json:"rollback_execution,omitempty"`
+	RollbackVerification *Verification   `json:"rollback_verification,omitempty"`
+	Failure              string          `json:"failure,omitempty"`
 }
 
 type ReleaseRun struct {

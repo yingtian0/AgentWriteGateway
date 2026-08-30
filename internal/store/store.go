@@ -69,6 +69,8 @@ type RunnerActionRecord struct {
 	Nonce          string
 	IdempotencyKey string
 	RequestHash    string
+	Target         protocol.Target
+	Action         protocol.Action
 	Status         RunnerActionStatus
 	Result         protocol.Result
 	StateVersion   int64

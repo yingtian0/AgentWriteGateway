@@ -1,6 +1,6 @@
 # Agent Write Gateway
 
-> **Prototype / not production ready.** The current implementation has a PostgreSQL/Temporal durable core and a fail-closed Runner authorization boundary, but still has only a mock adapter and no production KMS, JWKS, credential broker, or transport integration. It must not be connected to production credentials or production write APIs.
+> **Prototype / not production ready.** The current implementation has a PostgreSQL/Temporal durable core, a fail-closed Runner authorization boundary, a typed GitHub Actions adapter, and Datadog evidence classification. It still lacks production KMS/JWKS discovery, Runner transport integration, and a completed dedicated-staging deploy/rollback exercise. It must not be connected to production credentials or production write APIs.
 
 Agent Write Gateway is an open-source Change Execution Control Plane for planning, authorizing, executing, verifying, stopping, and auditing changes requested by people, CI, CLIs, or AI agents through the same deterministic safety boundary.
 
@@ -18,7 +18,7 @@ The current repository is an executable prototype. It performs no external write
 - `ALLOW`, `DENY`, and `REQUIRE_APPROVAL` decisions
 - role checks, separation of duties, approval expiry, and plan-hash binding
 - request idempotency and execution idempotency keys
-- separate deploy and verify stages, rollback on verification failure, and downstream stopping
+- four-value deploy verification, independently recorded rollback, rollback verification, escalation, and downstream stopping
 - audit records for subjects, policy inputs, decisions, and operations
 - optimistic state versions and a deliberately limited HTTP API
 - durable Approval, pause, resume, cancel, retry, and recovery through Temporal
@@ -27,6 +27,10 @@ The current repository is an executable prototype. It performs no external write
 - OIDC signature/issuer/audience/expiry verification and trusted delegation scope checks
 - monotonic OPA policy layers with a mandatory local baseline
 - Runner capability allowlists, durable nonce journal, replay protection, and disconnect-safe reconciliation
+- public typed Adapter SDK and explicit retryable/terminal/unknown error taxonomy
+- allow-listed GitHub Actions deploy/rollback workflows with external run IDs and timeout reconciliation
+- Runner-local GitHub and Datadog credential brokers that never return secrets to the Control Plane
+- Datadog `PASS`, `FAIL`, `INCONCLUSIVE`, and `MISSING` evidence with canonical hashes
 
 ## Safety boundary
 
@@ -71,13 +75,15 @@ Configuration is loaded from `config/gateway.example.yaml`; `AWG_DATABASE_URL`,
 `AWG_TEMPORAL_ADDRESS`, and the other `AWG_*` variables override file values.
 The compose stack is intended for local development, not production operation.
 
-Packet 03 also provides a Runner process scaffold with a health-only inbound endpoint:
+Packet 04 provides a Runner process scaffold with validated GitHub Actions and Datadog configuration and a health-only inbound endpoint:
 
 ```bash
 go run ./cmd/runner -config config/runner.example.yaml -check-config
 ```
 
-The Runner execution core is an internal library until Packet 04 supplies a production-quality typed adapter and credential broker. It exposes no arbitrary command, HTTP, or cloud API field. Production configuration requires durable journal storage and customer-managed trust-key files; development keys are available only through an explicit test/development constructor.
+The Runner execution core invokes the public typed Adapter SDK only after Grant, identity, policy, audit, and replay checks. It exposes no arbitrary command, HTTP, workflow path, or cloud API field. Production configuration requires durable journal storage, customer-managed trust keys, allow-listed GitHub/Datadog targets, and Runner-local short-lived credential files. The inbound Action Grant transport is intentionally deferred to Packet 05, so the health endpoint continues to report `accepting_actions: false`.
+
+GitHub target workflows must declare the fixed `awg_*` inputs and use the correlation run name `awg:${{ inputs.awg_idempotency_key }}`. A dispatch timeout is reconciled by that title and is never blindly retried. See ADR-0007 before enabling a staging adapter.
 
 `examples/release.json` uses the versioned `ReleaseIntent` envelope. The same HTTP paths continue to accept the original unversioned `ReleaseRequest` JSON for compatibility.
 
@@ -156,11 +162,16 @@ internal/grant    Action Grant signing boundary and strict verification
 internal/identity verified OIDC subjects and trusted agent delegation
 internal/policy   canonical policy input, signed bundles, and embedded OPA
 internal/runner   ordered grant/policy/journal/credential/adapter enforcement
+internal/verification evidence integrity and Runner-local verification service
 internal/engine   synchronous migration compatibility facade
 internal/executor typed adapter interface and mock implementation
 internal/store    durable store contract, memory test store, PostgreSQL store
 internal/workflow deterministic Temporal workflow and Activity boundaries
 pkg/protocol      versioned Control Plane/Runner messages and canonical payloads
+pkg/adapter       public typed deploy, rollback, reconcile, and verification SDK
+pkg/credentials   Runner-local credential broker interfaces and providers
+adapters/githubactions allow-listed workflow dispatch and reconciliation
+adapters/datadog  fixed-query four-value metrics evidence
 ```
 
 ## Contributing and security

@@ -2,7 +2,7 @@
 
 ## Status
 
-This is the baseline threat model for the target OSS v1.0 architecture. It must be revised when a packet changes a Trust Boundary, protocol, credential path, persistence authority, adapter, or deployment model. The current repository is a prototype and does not yet implement the described production controls.
+This is the baseline threat model for the target OSS v1.0 architecture. It must be revised when a packet changes a Trust Boundary, protocol, credential path, persistence authority, adapter, or deployment model. The repository now implements a typed GitHub Actions dispatch boundary and Datadog evidence classification, but it has not completed a live dedicated-staging deploy and rollback exercise.
 
 ## Security objectives
 
@@ -93,6 +93,8 @@ Action Grants and Policy Bundles use canonical Ed25519 signatures as defined in 
 
 **Required tests:** Duplicate start, approval, cancellation, provider event, and grant delivery are harmless; an older event cannot move state backward or reopen a completed step.
 
+**Implemented adapter boundary:** GitHub repository, deploy workflow, rollback workflow, and ref are Runner-owned allow-list entries. The adapter sends only fixed `awg_*` inputs and requires an external workflow run ID. Ambiguous POST responses are recorded as unknown and are never blindly retried. Reconciliation searches only configured workflows for the exact hashed idempotency correlation in the workflow run title.
+
 ### Missing, delayed, or manipulated metrics
 
 **Scenario:** The observability source is unavailable, returns an empty series, supplies stale data, or is manipulated so an unhealthy deployment appears safe.
@@ -100,6 +102,8 @@ Action Grants and Policy Bundles use canonical Ed25519 signatures as defined in 
 **Controls:** Verification has four outcomes: `PASS`, `FAIL`, `INCONCLUSIVE`, and `MISSING`. Evidence records source, query hash, observation window, timestamps, values, thresholds, adapter version, and integrity hash. Missing or inconclusive evidence extends observation, stops, requests accountable approval where policy permits, or rolls back; it never becomes success by default. Independent checks are required for critical profiles.
 
 **Required tests:** Empty, stale, partial, timeout, malformed, and contradictory results do not advance a required verification gate.
+
+**Implemented evidence boundary:** Datadog sites are selected from a closed hostname set and queries come from Runner configuration. The adapter classifies threshold satisfaction, breach, no series, and unavailable or stale results as `PASS`, `FAIL`, `MISSING`, and `INCONCLUSIVE`. Evidence persists a query hash and bounded numeric metadata; raw query text, logs, and credentials are omitted.
 
 ### Stale or malicious service context
 
@@ -132,6 +136,8 @@ Policy modules contribute deny reasons across platform mandatory, environment, t
 **Scenario:** A downstream step starts early, a rollback is unsupported or fails, or compensation itself produces an unknown state.
 
 **Controls:** Typed dependencies and state transitions gate eligibility. Rollback capability and deadline are known at planning time. Compensation is an independent authorized execution followed by verification. Failure or unknown compensation state opens a stop/circuit-breaker path and escalates; no downstream step starts.
+
+Release Profiles pin one of `automatic`, `approval-required`, `manual-only`, or `unsupported`. Only `automatic` starts compensation without another decision. Rollback dispatch receives its own idempotency key, execution record, and external ID. The workflow verifies the rollback result; any non-PASS result escalates and leaves downstream steps cancelled.
 
 ### Supply-chain compromise
 

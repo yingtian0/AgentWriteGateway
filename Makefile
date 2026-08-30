@@ -1,4 +1,4 @@
-.PHONY: run compose-up compose-down test test-race test-integration test-scenario test-policy test-planner benchmark-planner lint vet check fmt fmt-check
+.PHONY: run compose-up compose-down test test-race test-integration test-scenario test-policy test-adapter test-planner benchmark-planner lint vet check fmt fmt-check
 
 run:
 	go run ./cmd/gateway
@@ -28,6 +28,9 @@ test-policy:
 	else \
 		go test -count=1 ./internal/policy -run 'TestOPA'; \
 	fi
+
+test-adapter:
+	go test -count=1 ./pkg/adapter ./pkg/credentials ./adapters/... ./internal/verification
 
 test-planner:
 	go test -run TestPlan -count=20 ./internal/planner

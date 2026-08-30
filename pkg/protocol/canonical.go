@@ -97,5 +97,17 @@ func validateGrantShape(grant ActionGrant) error {
 			return fmt.Errorf("INVALID_ACTION_GRANT: %s must be a sha256 digest", field.name)
 		}
 	}
+	switch grant.Action.Capability {
+	case CapabilityDeploy:
+		if grant.Action.ExternalExecutionID != "" {
+			return fmt.Errorf("INVALID_ACTION_GRANT: deploy cannot name an external execution")
+		}
+	case CapabilityRollback:
+		if strings.TrimSpace(grant.Action.ExternalExecutionID) == "" {
+			return fmt.Errorf("INVALID_ACTION_GRANT: rollback requires external_execution_id")
+		}
+	default:
+		return fmt.Errorf("INVALID_ACTION_GRANT: unsupported capability %q", grant.Action.Capability)
+	}
 	return nil
 }

@@ -311,7 +311,7 @@ func isUniqueViolation(err error) bool {
 
 func (s *Store) GetRunnerAction(ctx context.Context, tenantID, runnerGroup, nonce string) (store.RunnerActionRecord, error) {
 	return scanRunnerAction(s.pool.QueryRow(ctx, `
-SELECT grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,status,result,state_version,created_at,updated_at
+SELECT grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,target,action,status,result,state_version,created_at,updated_at
 FROM runner_journal WHERE tenant_id=$1 AND runner_group=$2 AND nonce=$3`, tenantID, runnerGroup, nonce))
 }
 
@@ -321,18 +321,26 @@ func (s *Store) ReserveRunnerAction(ctx context.Context, record store.RunnerActi
 	if err != nil {
 		return store.RunnerActionRecord{}, false, err
 	}
+	target, err := json.Marshal(record.Target)
+	if err != nil {
+		return store.RunnerActionRecord{}, false, err
+	}
+	action, err := json.Marshal(record.Action)
+	if err != nil {
+		return store.RunnerActionRecord{}, false, err
+	}
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return store.RunnerActionRecord{}, false, err
 	}
 	defer tx.Rollback(ctx)
 	row := tx.QueryRow(ctx, `
-INSERT INTO runner_journal (grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,status,result,state_version,created_at,updated_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+INSERT INTO runner_journal (grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,target,action,status,result,state_version,created_at,updated_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 ON CONFLICT DO NOTHING
-RETURNING grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,status,result,state_version,created_at,updated_at`,
+RETURNING grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,target,action,status,result,state_version,created_at,updated_at`,
 		record.GrantID, record.RunID, record.StepID, record.TenantID, record.RunnerGroup, record.Nonce,
-		record.IdempotencyKey, record.RequestHash, record.Status, result, record.StateVersion, record.CreatedAt, record.UpdatedAt)
+		record.IdempotencyKey, record.RequestHash, target, action, record.Status, result, record.StateVersion, record.CreatedAt, record.UpdatedAt)
 	createdRecord, scanErr := scanRunnerAction(row)
 	if scanErr == nil {
 		if err := insertAudit(ctx, tx, audit); err != nil {
@@ -347,7 +355,7 @@ RETURNING grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,r
 		return store.RunnerActionRecord{}, false, scanErr
 	}
 	existing, err := scanRunnerAction(tx.QueryRow(ctx, `
-SELECT grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,status,result,state_version,created_at,updated_at
+SELECT grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,target,action,status,result,state_version,created_at,updated_at
 FROM runner_journal
 WHERE tenant_id=$1 AND runner_group=$2 AND (nonce=$3 OR idempotency_key=$4)
 ORDER BY CASE WHEN nonce=$3 THEN 0 ELSE 1 END LIMIT 1`, record.TenantID, record.RunnerGroup, record.Nonce, record.IdempotencyKey))
@@ -388,7 +396,7 @@ func (s *Store) PendingRunnerActions(ctx context.Context, tenantID, runnerGroup 
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
-SELECT grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,status,result,state_version,created_at,updated_at
+SELECT grant_id,run_id,step_id,tenant_id,runner_group,nonce,idempotency_key,request_hash,target,action,status,result,state_version,created_at,updated_at
 FROM runner_journal WHERE tenant_id=$1 AND runner_group=$2 AND status IN ('RESERVED','UNKNOWN') ORDER BY updated_at LIMIT $3`, tenantID, runnerGroup, limit)
 	if err != nil {
 		return nil, err
@@ -409,14 +417,24 @@ type runnerActionRow interface{ Scan(...any) error }
 
 func scanRunnerAction(row runnerActionRow) (store.RunnerActionRecord, error) {
 	var record store.RunnerActionRecord
-	var result []byte
+	var target, action, result []byte
 	if err := row.Scan(&record.GrantID, &record.RunID, &record.StepID, &record.TenantID, &record.RunnerGroup,
-		&record.Nonce, &record.IdempotencyKey, &record.RequestHash, &record.Status, &result, &record.StateVersion,
+		&record.Nonce, &record.IdempotencyKey, &record.RequestHash, &target, &action, &record.Status, &result, &record.StateVersion,
 		&record.CreatedAt, &record.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return store.RunnerActionRecord{}, store.ErrNotFound
 		}
 		return store.RunnerActionRecord{}, err
+	}
+	if len(target) > 0 {
+		if err := json.Unmarshal(target, &record.Target); err != nil {
+			return store.RunnerActionRecord{}, err
+		}
+	}
+	if len(action) > 0 {
+		if err := json.Unmarshal(action, &record.Action); err != nil {
+			return store.RunnerActionRecord{}, err
+		}
 	}
 	if len(result) > 0 {
 		if err := json.Unmarshal(result, &record.Result); err != nil {
