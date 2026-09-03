@@ -9,7 +9,7 @@ import (
 func TestBudgetAppliesEveryDimensionAndServiceExclusivity(t *testing.T) {
 	limits := DefaultLimits()
 	limits.TenantGlobal = 2
-	limits.Team = map[string]int{"tenant-a/payments": 1}
+	limits.Team = map[string]int{"payments": 1}
 	budget, err := NewBudget(limits)
 	if err != nil {
 		t.Fatal(err)

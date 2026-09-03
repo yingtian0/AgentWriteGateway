@@ -84,6 +84,7 @@ type Reservation struct {
 type budgetKey struct {
 	dimension Dimension
 	key       string
+	limitKey  string
 }
 
 // Budget atomically applies the intersection of every configured limit.
@@ -137,15 +138,15 @@ func (b *Budget) limit(key budgetKey) int {
 	case DimensionTenant:
 		return b.limits.TenantGlobal
 	case DimensionEnvironment:
-		return configuredLimit(b.limits.Environment, key.key, b.limits.DefaultPerDimension)
+		return configuredLimit(b.limits.Environment, key.limitKey, b.limits.DefaultPerDimension)
 	case DimensionRegion:
-		return configuredLimit(b.limits.Region, key.key, b.limits.DefaultPerDimension)
+		return configuredLimit(b.limits.Region, key.limitKey, b.limits.DefaultPerDimension)
 	case DimensionCluster:
-		return configuredLimit(b.limits.Cluster, key.key, b.limits.DefaultPerDimension)
+		return configuredLimit(b.limits.Cluster, key.limitKey, b.limits.DefaultPerDimension)
 	case DimensionTeam:
-		return configuredLimit(b.limits.Team, key.key, b.limits.DefaultPerDimension)
+		return configuredLimit(b.limits.Team, key.limitKey, b.limits.DefaultPerDimension)
 	case DimensionRiskTier:
-		return configuredLimit(b.limits.RiskTier, key.key, b.limits.DefaultPerDimension)
+		return configuredLimit(b.limits.RiskTier, key.limitKey, b.limits.DefaultPerDimension)
 	case DimensionFailureDomain:
 		return b.limits.SharedFailureDomain
 	case DimensionService:
@@ -168,18 +169,18 @@ func keysFor(step Step) []budgetKey {
 		tenant = "default"
 	}
 	keys := []budgetKey{
-		{DimensionTenant, tenant},
-		{DimensionEnvironment, tenant + "/" + step.Environment},
-		{DimensionRegion, tenant + "/" + step.Environment + "/" + step.Region},
-		{DimensionCluster, tenant + "/" + step.Environment + "/" + step.Region + "/" + step.Cluster},
-		{DimensionTeam, tenant + "/" + step.Team},
-		{DimensionRiskTier, tenant + "/" + step.RiskTier},
-		{DimensionService, tenant + "/" + step.Environment + "/" + step.ID},
+		{DimensionTenant, tenant, tenant},
+		{DimensionEnvironment, tenant + "/" + step.Environment, step.Environment},
+		{DimensionRegion, tenant + "/" + step.Environment + "/" + step.Region, step.Region},
+		{DimensionCluster, tenant + "/" + step.Environment + "/" + step.Region + "/" + step.Cluster, step.Cluster},
+		{DimensionTeam, tenant + "/" + step.Team, step.Team},
+		{DimensionRiskTier, tenant + "/" + step.RiskTier, step.RiskTier},
+		{DimensionService, tenant + "/" + step.Environment + "/" + step.ID, step.ID},
 	}
 	domains := append([]string(nil), step.FailureDomains...)
 	sort.Strings(domains)
 	for _, failureDomain := range domains {
-		keys = append(keys, budgetKey{DimensionFailureDomain, tenant + "/" + step.Environment + "/" + failureDomain})
+		keys = append(keys, budgetKey{DimensionFailureDomain, tenant + "/" + step.Environment + "/" + failureDomain, failureDomain})
 	}
 	return keys
 }
