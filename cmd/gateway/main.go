@@ -18,6 +18,7 @@ import (
 	"agentwritegateway/internal/planner"
 	"agentwritegateway/internal/policy"
 	"agentwritegateway/internal/profile"
+	"agentwritegateway/internal/scheduler"
 	postgresstore "agentwritegateway/internal/store/postgres"
 	"agentwritegateway/internal/ui"
 	workflowcore "agentwritegateway/internal/workflow"
@@ -92,6 +93,9 @@ func main() {
 	releases := application.NewReleases(releasePlanner, persistentStore, controller)
 	go releases.RunWorkflowRecovery(ctx, 5*time.Second, func(err error) { logger.Error("recover workflow outbox", "error", err) })
 	activities := workflowcore.NewActivities(persistentStore, policyEngine, executor.NewMock(nil))
+	activities.Capacity = func(input workflowcore.ScheduleInput) scheduler.Capacity {
+		return scheduler.Capacity{RunnerAvailable: releases.RunnerCapacity(input.Step.Tenant, input.Step.RunnerGroup), AdapterRemaining: 20, QueueLimit: 100}
+	}
 	if settings.Mode == "worker" {
 		runWorker(logger, temporalClient, settings.Temporal.TaskQueue, activities)
 		return

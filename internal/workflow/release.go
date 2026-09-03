@@ -253,7 +253,7 @@ func schedulingStep(run domain.ReleaseRun, releaseStep domain.ReleaseStep) sched
 					dependencies = append(dependencies, dependency.Service)
 				}
 			}
-			return scheduler.Step{ID: step.Service, Phase: step.Phase, Tenant: step.Scheduling.TenantID, Environment: string(step.Scheduling.Environment), Region: step.Scheduling.Region, Cluster: step.Scheduling.Cluster, Team: step.Scheduling.Team, RiskTier: step.Scheduling.RiskTier, FailureDomains: append([]string(nil), step.Scheduling.FailureDomains...), Dependencies: dependencies}
+			return scheduler.Step{ID: step.Service, Phase: step.Phase, Tenant: step.Scheduling.TenantID, Environment: string(step.Scheduling.Environment), Region: step.Scheduling.Region, Cluster: step.Scheduling.Cluster, Team: step.Scheduling.Team, RiskTier: step.Scheduling.RiskTier, RunnerGroup: step.Scheduling.RunnerGroup, FailureDomains: append([]string(nil), step.Scheduling.FailureDomains...), Dependencies: dependencies}
 		}
 	}
 	return scheduler.Step{ID: releaseStep.Service, Phase: releaseStep.Phase, Tenant: run.TenantID, Environment: string(run.Environment), Region: run.Region, Cluster: run.Cluster}
@@ -278,7 +278,7 @@ func assignWaves(run *domain.ReleaseRun) error {
 			steps = append(steps, scheduler.Step{
 				ID: step.Service, Phase: step.Phase, Tenant: step.Scheduling.TenantID,
 				Environment: string(step.Scheduling.Environment), Region: step.Scheduling.Region,
-				Cluster: step.Scheduling.Cluster, Team: step.Scheduling.Team, RiskTier: step.Scheduling.RiskTier,
+				Cluster: step.Scheduling.Cluster, Team: step.Scheduling.Team, RiskTier: step.Scheduling.RiskTier, RunnerGroup: step.Scheduling.RunnerGroup,
 				FailureDomains: append([]string(nil), step.Scheduling.FailureDomains...), Dependencies: dependencies,
 			})
 		}

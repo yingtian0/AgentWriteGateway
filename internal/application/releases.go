@@ -36,7 +36,7 @@ func NewReleases(releasePlanner *planner.Planner, st store.DurableStore, workflo
 	for _, service := range releasePlanner.Services() {
 		for _, group := range service.RunnerGroups {
 			if group != "" {
-				r.runners[group] = domain.RunnerInfo{ID: group, Group: group, Status: domain.RunnerUnknown}
+				r.runners[group] = domain.RunnerInfo{ID: group, Group: group, Status: domain.RunnerReady, Capacity: 20}
 			}
 		}
 	}
@@ -189,6 +189,19 @@ func (r *Releases) ListRunners(tenant string) []domain.RunnerInfo {
 	}
 	sort.Slice(runners, func(i, j int) bool { return runners[i].ID < runners[j].ID })
 	return runners
+}
+
+func (r *Releases) RunnerCapacity(tenant, id string) int {
+	tenant = normalized(tenant, "default")
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if frozen, ok := r.frozenRunners[tenant+"\x00"+id]; ok {
+		return frozen.Capacity
+	}
+	if runner, ok := r.runners[id]; ok && runner.Status == domain.RunnerReady {
+		return runner.Capacity
+	}
+	return 0
 }
 
 func (r *Releases) FreezeRunner(tenant, id, actor string) (domain.RunnerInfo, error) {

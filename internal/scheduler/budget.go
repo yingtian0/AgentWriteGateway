@@ -18,6 +18,7 @@ type Step struct {
 	Cluster        string   `json:"cluster" yaml:"cluster"`
 	Team           string   `json:"team" yaml:"team"`
 	RiskTier       string   `json:"risk_tier" yaml:"risk_tier"`
+	RunnerGroup    string   `json:"runner_group" yaml:"runner_group"`
 	FailureDomains []string `json:"failure_domains,omitempty" yaml:"failure_domains,omitempty"`
 	Dependencies   []string `json:"dependencies,omitempty" yaml:"dependencies,omitempty"`
 }
