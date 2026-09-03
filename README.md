@@ -130,21 +130,48 @@ The prototype approval body is:
 
 `roles` is a prototype-only input. A production implementation must resolve roles from the authenticated subject on the server.
 
-## Roadmap
 
-Development is split into bounded Task Packets. Each packet must preserve the safety invariants and must be completed and verified before work begins on the next one.
+```mermaid
 
-| Packet | Outcome |
-|---:|---|
-| 00 | architecture baseline, threat model, OSS governance, and CI |
-| 01 | Service Contract, Release Profile, and typed Plan v2 |
-| 02 | PostgreSQL durable state and Temporal workflows |
-| 03 | Customer Runner, signed Action Grants, identity, and OPA |
-| 04 | production-quality deploy adapter, evidence, verification, and rollback |
-| 05 | REST/CLI/MCP/UI interfaces, concurrency budgets, and scale validation |
-| 06 | packaging, security hardening, release engineering, and OSS v1.0 |
+flowchart LR
 
-The target public OSS v1.0 date is 2027-03-01. Dates are planning targets, not compatibility or support commitments. See the [implementation plan](docs/implementation-plan.md) for milestones and packet rules.
+    U["開発者・承認者"] --> UI["Port / ServiceConsole / GitHub / CLI"]
+
+    A["AI Agent"] --> MCP["MCP / API"]
+
+    UI --> O["Temporal / 既存CI/CD"]
+
+    MCP --> O
+
+    O --> CP["Agent Write Gateway<br/>Plan・Policy・Approval・Grant"]
+
+    CP --> R["顧客環境Runner<br/>最終認可・Credential取得"]
+
+    R --> AD["型付きAdapter"]
+
+    AD --> AWS["AWS ECS"]
+
+    AD --> ARGO["Argo / Kubernetes"]
+
+    AD --> GHA["GitHub Actions"]
+
+    AD --> OBS["Datadog等"]
+
+    AWS --> EV["実行結果・Evidence"]
+
+    ARGO --> EV
+
+    GHA --> EV
+
+    OBS --> EV
+
+    EV --> CP
+
+    CP --> UI
+
+```
+
+
 
 ## Package map
 
