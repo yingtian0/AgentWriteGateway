@@ -167,6 +167,38 @@ type Approval struct {
 	DecidedAt     *time.Time     `json:"decided_at,omitempty"`
 }
 
+type ApprovalSummary struct {
+	Approval Approval `json:"approval"`
+	RunID    string   `json:"run_id"`
+	Service  string   `json:"service"`
+	TenantID string   `json:"tenant_id"`
+}
+
+type RunnerStatus string
+
+const (
+	RunnerUnknown RunnerStatus = "UNKNOWN"
+	RunnerReady   RunnerStatus = "READY"
+	RunnerFrozen  RunnerStatus = "FROZEN"
+)
+
+type RunnerInfo struct {
+	ID       string       `json:"id"`
+	TenantID string       `json:"tenant_id"`
+	Group    string       `json:"group"`
+	Status   RunnerStatus `json:"status"`
+	Capacity int          `json:"capacity"`
+	LastSeen time.Time    `json:"last_seen,omitempty"`
+	FrozenBy string       `json:"frozen_by,omitempty"`
+	FrozenAt *time.Time   `json:"frozen_at,omitempty"`
+}
+
+type ContractValidation struct {
+	Valid       bool   `json:"valid"`
+	Name        string `json:"name,omitempty"`
+	ContentHash string `json:"content_hash,omitempty"`
+}
+
 type Execution struct {
 	ID                  string    `json:"id"`
 	Adapter             string    `json:"adapter,omitempty"`

@@ -21,6 +21,24 @@ type ReleaseService interface {
 	Resume(context.Context, string, string) (*domain.ReleaseRun, error)
 }
 
+// Gateway is the single safe use-case boundary shared by REST, CLI (through
+// REST), MCP, and UI. It intentionally contains no adapter operation.
+type Gateway interface {
+	Services() []domain.Service
+	PlanIntentForTenant(string, domain.ReleaseIntent) (domain.ReleasePlan, error)
+	GetPlan(string, string) (domain.ReleasePlan, error)
+	StartIntentForTenant(context.Context, string, domain.ReleaseIntent) (*domain.ReleaseRun, bool, error)
+	GetForTenant(string, string) (*domain.ReleaseRun, error)
+	EventsForTenant(string, string) ([]domain.AuditEvent, error)
+	ControlForTenant(context.Context, string, string, string, string) (*domain.ReleaseRun, error)
+	ListPendingApprovals(string) ([]domain.ApprovalSummary, error)
+	DecideApprovalForTenant(context.Context, string, string, string, string, []string, bool) (*domain.ReleaseRun, error)
+	RevokeApprovalForTenant(context.Context, string, string, string, string, []string) (*domain.ReleaseRun, error)
+	ValidateContract([]byte) (domain.ContractValidation, error)
+	ListRunners(string) []domain.RunnerInfo
+	FreezeRunner(string, string, string) (domain.RunnerInfo, error)
+}
+
 type WorkflowController interface {
 	StartRelease(context.Context, workflowcore.ReleaseInput) (workflowcore.Execution, error)
 	SignalApproval(context.Context, string, workflowcore.ApprovalSignal) error

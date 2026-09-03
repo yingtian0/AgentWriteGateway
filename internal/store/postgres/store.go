@@ -119,6 +119,27 @@ func (s *Store) GetRun(id string) (*domain.ReleaseRun, error) {
 	return scanRun(s.pool.QueryRow(context.Background(), selectRunSQL, id))
 }
 
+func (s *Store) ListRuns() ([]*domain.ReleaseRun, error) {
+	rows, err := s.pool.Query(context.Background(), `SELECT payload FROM release_runs ORDER BY created_at DESC, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	runs := make([]*domain.ReleaseRun, 0)
+	for rows.Next() {
+		var payload []byte
+		if err := rows.Scan(&payload); err != nil {
+			return nil, err
+		}
+		var run domain.ReleaseRun
+		if err := json.Unmarshal(payload, &run); err != nil {
+			return nil, err
+		}
+		runs = append(runs, &run)
+	}
+	return runs, rows.Err()
+}
+
 func (s *Store) getRunByRequest(ctx context.Context, requestID string) (*domain.ReleaseRun, error) {
 	return scanRun(s.pool.QueryRow(ctx, selectRunByRequestSQL, requestID))
 }

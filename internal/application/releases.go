@@ -4,10 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"sync"
 	"time"
 
+	"agentwritegateway/internal/contract"
 	"agentwritegateway/internal/domain"
 	"agentwritegateway/internal/planner"
 	"agentwritegateway/internal/store"
@@ -21,10 +25,21 @@ type Releases struct {
 	store     store.DurableStore
 	workflows WorkflowController
 	now       func() time.Time
+	mu        sync.RWMutex
+	plans     map[string]domain.ReleasePlan
+	runners   map[string]domain.RunnerInfo
 }
 
 func NewReleases(releasePlanner *planner.Planner, st store.DurableStore, workflows WorkflowController) *Releases {
-	return &Releases{planner: releasePlanner, store: st, workflows: workflows, now: time.Now}
+	r := &Releases{planner: releasePlanner, store: st, workflows: workflows, now: time.Now, plans: make(map[string]domain.ReleasePlan), runners: make(map[string]domain.RunnerInfo)}
+	for _, service := range releasePlanner.Services() {
+		for _, group := range service.RunnerGroups {
+			if group != "" {
+				r.runners[group] = domain.RunnerInfo{ID: group, Group: group, Status: domain.RunnerUnknown}
+			}
+		}
+	}
+	return r
 }
 
 func (r *Releases) Services() []domain.Service { return r.planner.Services() }
@@ -32,14 +47,49 @@ func (r *Releases) Plan(request domain.ReleaseRequest) (domain.ReleasePlan, erro
 	if err := validateRequest(request); err != nil {
 		return domain.ReleasePlan{}, err
 	}
-	return r.planner.Plan(request)
+	plan, err := r.planner.Plan(request)
+	if err == nil {
+		r.rememberPlan(plan)
+	}
+	return plan, err
 }
 func (r *Releases) PlanIntent(intent domain.ReleaseIntent) (domain.ReleasePlan, error) {
 	request := planner.LegacyRequestFromIntent(intent)
 	if err := validateRequest(request); err != nil {
 		return domain.ReleasePlan{}, err
 	}
-	return r.planner.PlanIntent(intent)
+	plan, err := r.planner.PlanIntent(intent)
+	if err == nil {
+		r.rememberPlan(plan)
+	}
+	return plan, err
+}
+
+func (r *Releases) PlanIntentForTenant(tenant string, intent domain.ReleaseIntent) (domain.ReleasePlan, error) {
+	if err := bindTenant(tenant, &intent.TenantID); err != nil {
+		return domain.ReleasePlan{}, err
+	}
+	return r.PlanIntent(intent)
+}
+
+func (r *Releases) GetPlan(tenant, id string) (domain.ReleasePlan, error) {
+	r.mu.RLock()
+	plan, ok := r.plans[id]
+	r.mu.RUnlock()
+	if !ok {
+		return domain.ReleasePlan{}, store.ErrNotFound
+	}
+	if planTenant(plan) != normalized(tenant, "default") {
+		return domain.ReleasePlan{}, tenantBoundaryError()
+	}
+	return clonePlan(plan), nil
+}
+
+func (r *Releases) StartIntentForTenant(ctx context.Context, tenant string, intent domain.ReleaseIntent) (*domain.ReleaseRun, bool, error) {
+	if err := bindTenant(tenant, &intent.TenantID); err != nil {
+		return nil, false, err
+	}
+	return r.StartIntent(ctx, intent)
 }
 func (r *Releases) Start(ctx context.Context, request domain.ReleaseRequest) (*domain.ReleaseRun, bool, error) {
 	plan, err := r.Plan(request)
@@ -91,11 +141,113 @@ func (r *Releases) start(ctx context.Context, request domain.ReleaseRequest, pla
 }
 
 func (r *Releases) Get(id string) (*domain.ReleaseRun, error) { return r.store.GetRun(id) }
+
+func (r *Releases) GetForTenant(tenant, id string) (*domain.ReleaseRun, error) {
+	run, err := r.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if normalized(run.TenantID, "default") != normalized(tenant, "default") {
+		return nil, tenantBoundaryError()
+	}
+	return run, nil
+}
 func (r *Releases) Events(id string) ([]domain.AuditEvent, error) {
 	if _, err := r.store.GetRun(id); err != nil {
 		return nil, err
 	}
 	return r.store.AuditEvents(id)
+}
+
+func (r *Releases) EventsForTenant(tenant, id string) ([]domain.AuditEvent, error) {
+	if _, err := r.GetForTenant(tenant, id); err != nil {
+		return nil, err
+	}
+	return r.store.AuditEvents(id)
+}
+
+func (r *Releases) ValidateContract(data []byte) (domain.ContractValidation, error) {
+	decoded, err := contract.Decode(data)
+	if err != nil {
+		return domain.ContractValidation{Valid: false}, err
+	}
+	return domain.ContractValidation{Valid: true, Name: decoded.Metadata.Name, ContentHash: decoded.ContentHash}, nil
+}
+
+func (r *Releases) ListRunners(tenant string) []domain.RunnerInfo {
+	tenant = normalized(tenant, "default")
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	runners := make([]domain.RunnerInfo, 0, len(r.runners))
+	for _, runner := range r.runners {
+		runner.TenantID = tenant
+		runners = append(runners, runner)
+	}
+	sort.Slice(runners, func(i, j int) bool { return runners[i].ID < runners[j].ID })
+	return runners
+}
+
+func (r *Releases) FreezeRunner(tenant, id, actor string) (domain.RunnerInfo, error) {
+	if actor == "" {
+		return domain.RunnerInfo{}, errors.New("freeze actor is required")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	runner, ok := r.runners[id]
+	if !ok {
+		return domain.RunnerInfo{}, store.ErrNotFound
+	}
+	now := r.now().UTC()
+	runner.TenantID = normalized(tenant, "default")
+	runner.Status = domain.RunnerFrozen
+	runner.Capacity = 0
+	runner.FrozenBy = actor
+	runner.FrozenAt = &now
+	r.runners[id] = runner
+	return runner, nil
+}
+
+func (r *Releases) rememberPlan(plan domain.ReleasePlan) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.plans[plan.ID] = clonePlan(plan)
+}
+
+func clonePlan(plan domain.ReleasePlan) domain.ReleasePlan {
+	data, err := json.Marshal(plan)
+	if err != nil {
+		panic(err)
+	}
+	var result domain.ReleasePlan
+	if err := json.Unmarshal(data, &result); err != nil {
+		panic(err)
+	}
+	return result
+}
+
+func planTenant(plan domain.ReleasePlan) string {
+	for _, phase := range plan.Phases {
+		for _, step := range phase.Steps {
+			return normalized(step.Scheduling.TenantID, "default")
+		}
+	}
+	return "default"
+}
+
+func bindTenant(authenticated string, requested *string) error {
+	authenticated = normalized(authenticated, "default")
+	if *requested == "" {
+		*requested = authenticated
+		return nil
+	}
+	if *requested != authenticated {
+		return tenantBoundaryError()
+	}
+	return nil
+}
+
+func tenantBoundaryError() error {
+	return domain.NewReasonError(domain.ReasonTenantBoundary, "tenant_id", "resource is outside the authenticated tenant", nil)
 }
 
 func validateRequest(request domain.ReleaseRequest) error {
@@ -128,3 +280,4 @@ func normalized(value, fallback string) string {
 }
 
 var _ ReleaseService = (*Releases)(nil)
+var _ Gateway = (*Releases)(nil)

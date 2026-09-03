@@ -110,6 +110,61 @@ func TestWorkflowStartOutboxRecoversAfterGatewayFailure(t *testing.T) {
 	}
 }
 
+func TestGatewayUseCasesEnforceTenantBoundary(t *testing.T) {
+	p, err := planner.New([]domain.Service{{Name: "identity", RunnerGroups: map[domain.Environment]string{domain.EnvironmentStaging: "staging-runner"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	memory := store.NewMemory()
+	service := NewReleases(p, memory, &fakeWorkflowController{})
+	intent := planner.IntentFromLegacy(applicationRequest())
+	intent.TenantID = "tenant-a"
+	plan, err := service.PlanIntentForTenant("tenant-a", intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.GetPlan("tenant-b", plan.ID); code(err) != domain.ReasonTenantBoundary {
+		t.Fatalf("cross-tenant plan read error=%v", err)
+	}
+	run, _, err := service.StartIntentForTenant(context.Background(), "tenant-a", intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.GetForTenant("tenant-b", run.ID); code(err) != domain.ReasonTenantBoundary {
+		t.Fatalf("cross-tenant run read error=%v", err)
+	}
+	if _, _, err := service.StartIntentForTenant(context.Background(), "tenant-b", intent); code(err) != domain.ReasonTenantBoundary {
+		t.Fatalf("tenant substitution error=%v", err)
+	}
+}
+
+func TestListApprovalsAndRunnerFreezeStayInsideApplicationBoundary(t *testing.T) {
+	p, _ := planner.New([]domain.Service{{Name: "identity", RunnerGroups: map[domain.Environment]string{domain.EnvironmentStaging: "staging-runner"}}})
+	memory := store.NewMemory()
+	service := NewReleases(p, memory, &fakeWorkflowController{})
+	now := time.Now().UTC()
+	run := &domain.ReleaseRun{ID: "pending", WorkflowID: "pending", RequestID: "pending-request", TenantID: "tenant-a", Plan: domain.ReleasePlan{Hash: "plan"}, StateVersion: 1, CreatedAt: now, UpdatedAt: now, Steps: []domain.ReleaseStep{{Service: "identity", Approval: &domain.Approval{ID: "approval", Status: domain.ApprovalPending, PlanHash: "plan", ExpiresAt: now.Add(time.Hour)}}}}
+	if _, _, err := memory.CreateRun(run); err != nil {
+		t.Fatal(err)
+	}
+	approvals, err := service.ListPendingApprovals("tenant-a")
+	if err != nil || len(approvals) != 1 {
+		t.Fatalf("approvals=%#v err=%v", approvals, err)
+	}
+	if other, err := service.ListPendingApprovals("tenant-b"); err != nil || len(other) != 0 {
+		t.Fatalf("cross-tenant approvals=%#v err=%v", other, err)
+	}
+	runner, err := service.FreezeRunner("tenant-a", "staging-runner", "operator")
+	if err != nil || runner.Status != domain.RunnerFrozen || runner.Capacity != 0 {
+		t.Fatalf("runner=%#v err=%v", runner, err)
+	}
+}
+
+func code(err error) domain.ReasonCode {
+	value, _ := domain.ReasonOf(err)
+	return value
+}
+
 func applicationRequest() domain.ReleaseRequest {
 	return domain.ReleaseRequest{RequestID: "request-application", ReleaseVersion: "release-1", Environment: domain.EnvironmentStaging, RequestedBy: "user", Agent: domain.AgentIdentity{ID: "agent", Scopes: []string{"release:deploy"}}, Changes: []domain.Change{{Service: "identity", DesiredVersion: "sha-1", CISuccess: true, DependenciesHealthy: true}}}
 }

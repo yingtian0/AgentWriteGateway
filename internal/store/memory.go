@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -67,6 +68,22 @@ func (m *Memory) GetRun(id string) (*domain.ReleaseRun, error) {
 		return nil, ErrNotFound
 	}
 	return cloneRun(run), nil
+}
+
+func (m *Memory) ListRuns() ([]*domain.ReleaseRun, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	runs := make([]*domain.ReleaseRun, 0, len(m.runs))
+	for _, run := range m.runs {
+		runs = append(runs, cloneRun(run))
+	}
+	sort.Slice(runs, func(i, j int) bool {
+		if runs[i].CreatedAt.Equal(runs[j].CreatedAt) {
+			return runs[i].ID < runs[j].ID
+		}
+		return runs[i].CreatedAt.After(runs[j].CreatedAt)
+	})
+	return runs, nil
 }
 
 func (m *Memory) UpdateRun(run *domain.ReleaseRun, expectedVersion int64) error {

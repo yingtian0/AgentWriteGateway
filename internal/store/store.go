@@ -23,6 +23,7 @@ var (
 type Store interface {
 	CreateRun(*domain.ReleaseRun) (*domain.ReleaseRun, bool, error)
 	GetRun(string) (*domain.ReleaseRun, error)
+	ListRuns() ([]*domain.ReleaseRun, error)
 	UpdateRun(*domain.ReleaseRun, int64) error
 	AppendAudit(domain.AuditEvent) error
 	AuditEvents(string) ([]domain.AuditEvent, error)

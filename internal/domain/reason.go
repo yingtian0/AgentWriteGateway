@@ -22,6 +22,10 @@ const (
 	ReasonContextChanged           ReasonCode = "CONTEXT_CHANGED"
 	ReasonPolicyChanged            ReasonCode = "POLICY_CHANGED"
 	ReasonEvidenceChanged          ReasonCode = "EVIDENCE_CHANGED"
+	ReasonTenantBoundary           ReasonCode = "TENANT_BOUNDARY"
+	ReasonRunnerFrozen             ReasonCode = "RUNNER_FROZEN"
+	ReasonCircuitOpen              ReasonCode = "CIRCUIT_OPEN"
+	ReasonBackpressure             ReasonCode = "BACKPRESSURE"
 )
 
 type ReasonError struct {

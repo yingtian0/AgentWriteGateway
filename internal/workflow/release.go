@@ -311,15 +311,31 @@ func awaitApproval(activityContext, ctx workflow.Context, run domain.ReleaseRun,
 			run.UpdatedAt = workflow.Now(ctx).UTC()
 			return persist(activityContext, run, nil, "approval.expired")
 		}
+		action := signal.Action
+		if action == "" {
+			if signal.Approve {
+				action = "approve"
+			} else {
+				action = "deny"
+			}
+		}
 		if signal.ApprovalID != run.Steps[index].Approval.ID || signal.Actor == "" ||
-			(signal.Approve && signal.Actor == run.RequestedBy) ||
-			(signal.Approve && !containsAll(signal.Roles, run.Steps[index].Approval.RequiredRoles)) {
+			(action == "approve" && signal.Actor == run.RequestedBy) ||
+			((action == "approve" || action == "revoke") && !containsAll(signal.Roles, run.Steps[index].Approval.RequiredRoles)) {
 			continue
 		}
 		decidedAt := workflow.Now(ctx).UTC()
 		run.Steps[index].Approval.DecidedBy = signal.Actor
 		run.Steps[index].Approval.DecidedAt = &decidedAt
-		if !signal.Approve {
+		if action == "revoke" {
+			run.Steps[index].Approval.Status = domain.ApprovalRevoked
+			run.Steps[index].Status = domain.StepBlocked
+			run.Status = domain.RunBlocked
+			cancelDownstream(&run, index+1)
+			run.UpdatedAt = decidedAt
+			return persist(activityContext, run, []AuditIntent{{ActorType: "user", ActorID: signal.Actor, Action: "approval.revoke", ResourceType: "approval", ResourceID: signal.ApprovalID, Result: "REVOKED"}}, "approval.revoked")
+		}
+		if action != "approve" {
 			run.Steps[index].Approval.Status = domain.ApprovalDenied
 			run.Steps[index].Status = domain.StepBlocked
 			run.Status = domain.RunBlocked
