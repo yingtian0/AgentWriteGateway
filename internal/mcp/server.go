@@ -112,6 +112,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "origin is not allowed", http.StatusForbidden)
 		return
 	}
+	if version := r.Header.Get("MCP-Protocol-Version"); version != "" && !supportedProtocol(version) {
+		http.Error(w, "unsupported MCP protocol version", http.StatusBadRequest)
+		return
+	}
 	active := s
 	if s.resolver != nil {
 		principal, err := s.resolver.Resolve(r)
@@ -136,6 +140,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if mirrored := r.Header.Get("Mcp-Method"); mirrored != "" && mirrored != message.Method {
 		writeRPC(w, http.StatusBadRequest, response{JSONRPC: "2.0", ID: message.ID, Error: &rpcError{Code: -32600, Message: "Mcp-Method header does not match request"}})
 		return
+	}
+	if message.Method == "tools/call" && r.Header.Get("Mcp-Name") != "" {
+		var params callParams
+		if err := decodeRaw(message.Params, &params); err != nil || params.Name != r.Header.Get("Mcp-Name") {
+			writeRPC(w, http.StatusBadRequest, response{JSONRPC: "2.0", ID: message.ID, Error: &rpcError{Code: -32600, Message: "Mcp-Name header does not match request"}})
+			return
+		}
 	}
 	if len(message.ID) == 0 {
 		w.WriteHeader(http.StatusAccepted)
@@ -373,4 +384,13 @@ func sameOrigin(r *http.Request) bool {
 	}
 	parsed, err := url.Parse(origin)
 	return err == nil && strings.EqualFold(parsed.Host, r.Host)
+}
+
+func supportedProtocol(version string) bool {
+	switch version {
+	case "2025-03-26", "2025-06-18", ProtocolVersion:
+		return true
+	default:
+		return false
+	}
 }

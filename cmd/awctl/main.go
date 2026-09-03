@@ -57,27 +57,27 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	case "services":
 		data, err = c.request(ctx, http.MethodGet, "/v1/services", nil, false)
 	case "plan":
-		data, err = c.fileRequest(ctx, http.MethodPost, "/v1/plans", oneArg(command, values), false)
+		data, err = c.fileRequest(ctx, http.MethodPost, "/v1/plans", oneArg(values), false)
 	case "get-plan":
-		data, err = c.request(ctx, http.MethodGet, "/v1/plans/"+escape(oneArg(command, values)), nil, false)
+		data, err = c.request(ctx, http.MethodGet, "/v1/plans/"+escape(oneArg(values)), nil, false)
 	case "start":
-		data, err = c.fileRequest(ctx, http.MethodPost, "/v1/release-runs", oneArg(command, values), false)
+		data, err = c.fileRequest(ctx, http.MethodPost, "/v1/release-runs", oneArg(values), false)
 	case "status":
-		data, err = c.request(ctx, http.MethodGet, "/v1/release-runs/"+escape(oneArg(command, values)), nil, false)
+		data, err = c.request(ctx, http.MethodGet, "/v1/release-runs/"+escape(oneArg(values)), nil, false)
 	case "events":
-		data, err = c.request(ctx, http.MethodGet, "/v1/release-runs/"+escape(oneArg(command, values))+"/events", nil, false)
+		data, err = c.request(ctx, http.MethodGet, "/v1/release-runs/"+escape(oneArg(values))+"/events", nil, false)
 	case "pause", "resume", "cancel":
-		data, err = c.request(ctx, http.MethodPost, "/v1/release-runs/"+escape(oneArg(command, values))+":"+command, nil, true)
+		data, err = c.request(ctx, http.MethodPost, "/v1/release-runs/"+escape(oneArg(values))+":"+command, nil, true)
 	case "approvals":
 		data, err = c.request(ctx, http.MethodGet, "/v1/approvals", nil, false)
 	case "approve", "deny", "revoke":
-		data, err = c.request(ctx, http.MethodPost, "/v1/approvals/"+escape(oneArg(command, values))+":"+command, nil, true)
+		data, err = c.request(ctx, http.MethodPost, "/v1/approvals/"+escape(oneArg(values))+":"+command, nil, true)
 	case "runners":
 		data, err = c.request(ctx, http.MethodGet, "/v1/runners", nil, false)
 	case "freeze-runner":
-		data, err = c.request(ctx, http.MethodPost, "/v1/runners/"+escape(oneArg(command, values))+":freeze", nil, true)
+		data, err = c.request(ctx, http.MethodPost, "/v1/runners/"+escape(oneArg(values))+":freeze", nil, true)
 	case "validate-contract":
-		data, err = c.fileRequest(ctx, http.MethodPost, "/v1/contracts:validate", oneArg(command, values), false)
+		data, err = c.fileRequest(ctx, http.MethodPost, "/v1/contracts:validate", oneArg(values), false)
 	default:
 		return fmt.Errorf("unknown command %q", command)
 	}
@@ -149,7 +149,7 @@ func writePrettyJSON(w io.Writer, data []byte) error {
 	return encoder.Encode(value)
 }
 
-func oneArg(command string, values []string) string {
+func oneArg(values []string) string {
 	return values[0]
 }
 
