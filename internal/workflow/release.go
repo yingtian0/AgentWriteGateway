@@ -9,6 +9,7 @@ import (
 	"agentwritegateway/internal/audit"
 	"agentwritegateway/internal/domain"
 	"agentwritegateway/internal/executor"
+	"agentwritegateway/internal/scheduler"
 	"agentwritegateway/pkg/adapter"
 
 	"go.temporal.io/sdk/temporal"
@@ -41,6 +42,9 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 		if step.Status == domain.StepSucceeded {
 			succeeded[step.Service] = true
 		}
+	}
+	if err := assignWaves(&run); err != nil {
+		return run, err
 	}
 	for index := range run.Steps {
 		if cancelled := cancelChannel.ReceiveAsync(&ControlSignal{}); cancelled {
@@ -201,6 +205,49 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 	run.Status = domain.RunSucceeded
 	run.UpdatedAt = workflow.Now(ctx).UTC()
 	return persist(activityContext, run, []AuditIntent{{ActorType: "system", ActorID: "temporal", Action: "release.workflow.complete", ResourceType: "release_run", ResourceID: run.ID, Result: "SUCCEEDED"}}, "release.succeeded")
+}
+
+func assignWaves(run *domain.ReleaseRun) error {
+	planned := make(map[string]bool, len(run.Steps))
+	selected := make(map[string]bool, len(run.Steps))
+	for _, step := range run.Steps {
+		selected[step.Service] = true
+	}
+	steps := make([]scheduler.Step, 0, len(run.Steps))
+	for _, phase := range run.Plan.Phases {
+		for _, step := range phase.Steps {
+			planned[step.Service] = true
+			dependencies := make([]string, 0)
+			for _, dependency := range step.Dependencies {
+				if dependency.Service != "" && dependency.Type.EnforcesRolloutOrder() && selected[dependency.Service] {
+					dependencies = append(dependencies, dependency.Service)
+				}
+			}
+			steps = append(steps, scheduler.Step{
+				ID: step.Service, Phase: step.Phase, Tenant: step.Scheduling.TenantID,
+				Environment: string(step.Scheduling.Environment), Region: step.Scheduling.Region,
+				Cluster: step.Scheduling.Cluster, Team: step.Scheduling.Team, RiskTier: step.Scheduling.RiskTier,
+				FailureDomains: append([]string(nil), step.Scheduling.FailureDomains...), Dependencies: dependencies,
+			})
+		}
+	}
+	waves, err := scheduler.BuildWaves(steps, scheduler.DefaultLimits())
+	if err != nil {
+		return fmt.Errorf("build safe release waves: %w", err)
+	}
+	waveByService := make(map[string]int, len(run.Steps))
+	for _, wave := range waves {
+		for _, step := range wave.Steps {
+			waveByService[step.ID] = wave.Number
+		}
+	}
+	for index := range run.Steps {
+		if !planned[run.Steps[index].Service] {
+			return fmt.Errorf("release step %q is absent from plan", run.Steps[index].Service)
+		}
+		run.Steps[index].Wave = waveByService[run.Steps[index].Service]
+	}
+	return nil
 }
 
 func verificationProjection(result executor.VerificationResult, checkedAt time.Time) *domain.Verification {

@@ -38,7 +38,8 @@ type serviceDefinition struct {
 }
 
 type environmentDefinition struct {
-	profile string
+	profile     string
+	runnerGroup string
 }
 
 type Planner struct {
@@ -85,8 +86,8 @@ func New(services []domain.Service) (*Planner, error) {
 			service:      service,
 			dependencies: sortedDependencies(dependencies),
 			environments: map[domain.Environment]environmentDefinition{
-				domain.EnvironmentStaging:    {profile: "legacy"},
-				domain.EnvironmentProduction: {profile: "legacy"},
+				domain.EnvironmentStaging:    {profile: "legacy", runnerGroup: "legacy-staging"},
+				domain.EnvironmentProduction: {profile: "legacy", runnerGroup: "legacy-production"},
 			},
 			contractHash: hash,
 		}
@@ -163,22 +164,34 @@ func NewFromContracts(contracts []contract.ServiceContract, profiles []profile.R
 				return nil, domain.NewReasonError(domain.ReasonMissingCapability, "environments."+name+".capabilities", fmt.Sprintf("profile %q requires %v", environment.ReleaseProfile, missing), nil)
 			}
 			environments[domain.Environment(name)] = environmentDefinition{
-				profile: environment.ReleaseProfile,
+				profile:     environment.ReleaseProfile,
+				runnerGroup: environment.RunnerGroup,
 			}
 		}
 		dependencies := sortedDependencies(serviceContract.Dependencies)
 		ordered := make([]string, 0, len(dependencies))
+		failureDomains := make([]string, 0)
 		for _, dependency := range dependencies {
 			if dependency.Service != "" && dependency.Type.EnforcesRolloutOrder() {
 				ordered = append(ordered, dependency.Service)
 			}
+			if dependency.Type == domain.DependencySharedFailureDomain && dependency.Resource != "" {
+				failureDomains = append(failureDomains, dependency.Resource)
+			}
+		}
+		runnerGroups := make(map[domain.Environment]string, len(environments))
+		for environment, definition := range environments {
+			runnerGroups[environment] = definition.runnerGroup
 		}
 		service := domain.Service{
 			ID:              name,
 			Name:            name,
 			OwnerTeam:       serviceContract.Metadata.Owner,
+			RiskTier:        serviceContract.Metadata.RiskTier,
 			Repository:      serviceContract.Metadata.Repository,
 			Dependencies:    ordered,
+			RunnerGroups:    runnerGroups,
+			FailureDomains:  failureDomains,
 			MetadataVersion: serviceContract.APIVersion,
 		}
 		services[name] = service
@@ -249,6 +262,8 @@ func (p *Planner) Services() []domain.Service {
 	services := make([]domain.Service, 0, len(p.services))
 	for _, service := range p.services {
 		service.Dependencies = append([]string(nil), service.Dependencies...)
+		service.FailureDomains = append([]string(nil), service.FailureDomains...)
+		service.RunnerGroups = maps.Clone(service.RunnerGroups)
 		services = append(services, service)
 	}
 	sort.Slice(services, func(i, j int) bool { return services[i].Name < services[j].Name })
@@ -265,7 +280,10 @@ func IntentFromLegacy(request domain.ReleaseRequest) domain.ReleaseIntent {
 		Kind:           domain.ReleaseIntentKind,
 		RequestID:      request.RequestID,
 		ReleaseVersion: request.ReleaseVersion,
+		TenantID:       request.TenantID,
 		Environment:    request.Environment,
+		Region:         request.Region,
+		Cluster:        request.Cluster,
 		RequestedBy:    request.RequestedBy,
 		Agent:          request.Agent,
 		Changes:        append([]domain.Change(nil), request.Changes...),
@@ -276,7 +294,10 @@ func LegacyRequestFromIntent(intent domain.ReleaseIntent) domain.ReleaseRequest 
 	return domain.ReleaseRequest{
 		RequestID:      intent.RequestID,
 		ReleaseVersion: intent.ReleaseVersion,
+		TenantID:       intent.TenantID,
 		Environment:    intent.Environment,
+		Region:         intent.Region,
+		Cluster:        intent.Cluster,
 		RequestedBy:    intent.RequestedBy,
 		Agent:          intent.Agent,
 		Changes:        append([]domain.Change(nil), intent.Changes...),
@@ -384,6 +405,16 @@ func (p *Planner) PlanIntent(intent domain.ReleaseIntent) (domain.ReleasePlan, e
 			VerificationRequired: true,
 			ObservationWindow:    "1m",
 			RollbackMode:         domain.RollbackAutomatic,
+			Scheduling: domain.SchedulingContext{
+				TenantID:       normalizedValue(intent.TenantID, "default"),
+				Environment:    intent.Environment,
+				Region:         normalizedValue(intent.Region, "global"),
+				Cluster:        normalizedValue(intent.Cluster, environment.runnerGroup),
+				Team:           definition.service.OwnerTeam,
+				RiskTier:       normalizedValue(definition.service.RiskTier, "medium"),
+				RunnerGroup:    environment.runnerGroup,
+				FailureDomains: append([]string(nil), definition.service.FailureDomains...),
+			},
 		}
 		if releaseProfile, ok := p.profiles[environment.profile]; ok {
 			step.RequiredCapabilities = sortedCapabilities(releaseProfile.Spec.RequiredCapabilities)
@@ -420,6 +451,13 @@ func (p *Planner) PlanIntent(intent domain.ReleaseIntent) (domain.ReleasePlan, e
 	plan.PlanHash = hash
 	plan.ID = "plan_" + hash[len("sha256:"):len("sha256:")+24]
 	return plan, nil
+}
+
+func normalizedValue(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func (p *Planner) ValidatePlan(plan domain.ReleasePlan, now time.Time) error {
