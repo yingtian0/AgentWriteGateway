@@ -14,10 +14,12 @@ import (
 	"agentwritegateway/internal/config"
 	"agentwritegateway/internal/contract"
 	"agentwritegateway/internal/executor"
+	"agentwritegateway/internal/mcp"
 	"agentwritegateway/internal/planner"
 	"agentwritegateway/internal/policy"
 	"agentwritegateway/internal/profile"
 	postgresstore "agentwritegateway/internal/store/postgres"
+	"agentwritegateway/internal/ui"
 	workflowcore "agentwritegateway/internal/workflow"
 
 	"go.temporal.io/sdk/client"
@@ -102,7 +104,16 @@ func main() {
 		}
 		defer worker.Stop()
 	}
-	server := &http.Server{Addr: settings.HTTP.Address, Handler: api.New(releases, logger).Handler(), ReadHeaderTimeout: 5 * time.Second}
+	uiServer, err := ui.New(releases, ui.HeaderIdentityVerifier{})
+	if err != nil {
+		logger.Error("initialize status UI", "error", err)
+		os.Exit(1)
+	}
+	routes := http.NewServeMux()
+	routes.Handle("/mcp", mcp.NewHTTP(releases, mcp.HeaderPrincipalResolver{}, nil))
+	routes.Handle("/ui/", uiServer.Handler())
+	routes.Handle("/", api.New(releases, logger).Handler())
+	server := &http.Server{Addr: settings.HTTP.Address, Handler: routes, ReadHeaderTimeout: 5 * time.Second}
 	logger.Info("gateway listening", "address", settings.HTTP.Address, "services", len(contracts), "workflow", "temporal", "store", "postgres")
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("server stopped", "error", err)

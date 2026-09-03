@@ -1,0 +1,21 @@
+{{define "run"}}
+{{template "head" .}}
+<h1>Release {{.Run.ID}}</h1>
+<dl class="summary">
+  <div><dt>Status</dt><dd><span class="status">{{.Run.Status}}</span></dd></div>
+  <div><dt>Tenant</dt><dd>{{.Run.TenantID}}</dd></div>
+  <div><dt>Environment</dt><dd>{{.Run.Environment}}</dd></div>
+  <div><dt>Plan hash</dt><dd><code>{{.Run.Plan.Hash}}</code></dd></div>
+</dl>
+<h2>Steps</h2>
+<table>
+  <thead><tr><th>Wave</th><th>Service</th><th>Status</th><th>Failure</th></tr></thead>
+  <tbody>{{range .Run.Steps}}<tr><td>{{.Wave}}</td><td>{{.Service}}</td><td>{{.Status}}</td><td>{{.Failure}}</td></tr>{{end}}</tbody>
+</table>
+<h2>Audit events</h2>
+<table>
+  <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Result</th></tr></thead>
+  <tbody>{{range .Events}}<tr><td>{{.Timestamp}}</td><td>{{.ActorID}}</td><td>{{.Action}}</td><td>{{.Result}}</td></tr>{{end}}</tbody>
+</table>
+{{template "foot" .}}
+{{end}}
