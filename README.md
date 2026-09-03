@@ -31,6 +31,8 @@ The current repository is an executable prototype. It performs no external write
 - allow-listed GitHub Actions deploy/rollback workflows with external run IDs and timeout reconciliation
 - Runner-local GitHub and Datadog credential brokers that never return secrets to the Control Plane
 - Datadog `PASS`, `FAIL`, `INCONCLUSIVE`, and `MISSING` evidence with canonical hashes
+- one Application use-case boundary shared by REST, CLI, structured MCP tools, and the server-rendered status/approval UI
+- deterministic release waves, multi-layer concurrency budgets, Runner/rate/queue backpressure, and a production circuit breaker
 
 ## Safety boundary
 
@@ -87,10 +89,10 @@ GitHub target workflows must declare the fixed `awg_*` inputs and use the correl
 
 `examples/release.json` uses the versioned `ReleaseIntent` envelope. The same HTTP paths continue to accept the original unversioned `ReleaseRequest` JSON for compatibility.
 
-In another terminal, create a plan:
+In another terminal, create a plan through the OpenAPI v1alpha1 route:
 
 ```bash
-curl -sS -X POST http://localhost:8080/v1/release-runs:plan \
+curl -sS -X POST http://localhost:8080/v1/plans \
   -H 'Content-Type: application/json' \
   --data-binary @examples/release.json
 ```
@@ -103,32 +105,47 @@ curl -sS -X POST http://localhost:8080/v1/release-runs \
   --data-binary @examples/release.json
 ```
 
+The same flow is available without AI through `awctl`:
+
+```bash
+go run ./cmd/awctl -tenant example-tenant plan examples/release.json
+go run ./cmd/awctl -tenant example-tenant start examples/release.json
+go run ./cmd/awctl -tenant example-tenant status RUN_ID
+```
+
+The minimal UI is served at `/ui/approvals`; it requires authenticated
+`X-Actor-ID`, `X-Tenant-ID`, and trusted `X-Actor-Roles` headers. Approval
+identity is resolved again on every form submission and is never accepted from
+form fields. The stateless MCP endpoint is `/mcp` and exposes only the ten
+structured tools documented by Packet 05. These headers are a trusted-proxy
+development boundary; an internet-facing deployment must populate them only
+after OIDC verification and strip caller-supplied copies.
+
 ## API
 
 ```text
 GET  /healthz
 GET  /v1/services
-POST /v1/release-runs:plan
+POST /v1/plans
+GET  /v1/plans/{id}
 POST /v1/release-runs
 GET  /v1/release-runs/{id}
 GET  /v1/release-runs/{id}/events
-POST /v1/release-runs/{id}/cancel
-POST /v1/release-runs/{id}/pause
-POST /v1/release-runs/{id}/resume
-POST /v1/release-runs/{id}/approvals/{approvalID}/approve
-POST /v1/release-runs/{id}/approvals/{approvalID}/deny
+POST /v1/release-runs/{id}:cancel
+POST /v1/release-runs/{id}:pause
+POST /v1/release-runs/{id}:resume
+GET  /v1/approvals
+POST /v1/approvals/{id}:approve
+POST /v1/approvals/{id}:deny
+POST /v1/approvals/{id}:revoke
+POST /v1/contracts:validate
+GET  /v1/runners
+POST /v1/runners/{id}:freeze
 ```
 
-The prototype approval body is:
-
-```json
-{
-  "actor": "sre-user-1",
-  "roles": ["service-owner", "sre"]
-}
-```
-
-`roles` is a prototype-only input. A production implementation must resolve roles from the authenticated subject on the server.
+The Packet 00-04 slash-action routes remain temporarily available and return
+`Deprecation: true` plus a successor `Link`. OpenAPI is the REST source of truth
+at `api/openapi/v1alpha1.yaml`.
 
 
 ```mermaid
@@ -177,8 +194,9 @@ flowchart LR
 
 ```text
 cmd/gateway       HTTP server composition root
+cmd/awctl         fixed-operation REST CLI
 cmd/runner        customer Runner configuration and process scaffold
-internal/api      deliberately limited external API
+internal/api      OpenAPI-backed REST interface and tenant boundary
 internal/application release use cases and workflow/outbox dispatch
 internal/catalog  prototype service metadata loader
 internal/contract versioned Service Contract loading, validation, canonicalization
@@ -189,6 +207,9 @@ internal/grant    Action Grant signing boundary and strict verification
 internal/identity verified OIDC subjects and trusted agent delegation
 internal/policy   canonical policy input, signed bundles, and embedded OPA
 internal/runner   ordered grant/policy/journal/credential/adapter enforcement
+internal/mcp      bounded structured MCP facade
+internal/scheduler release waves, budgets, backpressure, and circuit breaker
+internal/ui       server-rendered status and approval handlers
 internal/verification evidence integrity and Runner-local verification service
 internal/engine   synchronous migration compatibility facade
 internal/executor typed adapter interface and mock implementation
@@ -199,6 +220,7 @@ pkg/adapter       public typed deploy, rollback, reconcile, and verification SDK
 pkg/credentials   Runner-local credential broker interfaces and providers
 adapters/githubactions allow-listed workflow dispatch and reconciliation
 adapters/datadog  fixed-query four-value metrics evidence
+web               embedded templates and static UI assets
 ```
 
 ## Contributing and security

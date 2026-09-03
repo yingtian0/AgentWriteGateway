@@ -1,0 +1,12 @@
+service_count: 200
+services_per_phase: 20
+team_count: 10
+cluster_count: 4
+failure_domain_count: 25
+limits:
+  tenant_global: 12
+  default_per_dimension: 12
+  shared_failure_domain: 1
+runner_capacity: 12
+adapter_remaining: 200
+queue_limit: 200

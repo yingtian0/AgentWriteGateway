@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -104,4 +105,24 @@ func hasDimension(blocked []Blocked, dimension Dimension) bool {
 		}
 	}
 	return false
+}
+
+func BenchmarkBuildTwoHundredServiceWaves(b *testing.B) {
+	steps := make([]Step, 200)
+	for index := range steps {
+		steps[index] = testStep(fmt.Sprintf("service-%03d", index))
+		steps[index].Phase = index / 20
+		steps[index].FailureDomains = []string{fmt.Sprintf("domain-%02d", index%25)}
+		if index >= 20 {
+			steps[index].Dependencies = []string{fmt.Sprintf("service-%03d", index-20)}
+		}
+	}
+	limits := DefaultLimits()
+	limits.TenantGlobal = 12
+	b.ResetTimer()
+	for range b.N {
+		if _, err := BuildWaves(steps, limits); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
