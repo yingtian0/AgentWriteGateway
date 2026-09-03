@@ -17,6 +17,8 @@ import (
 	"agentwritegateway/internal/planner"
 	"agentwritegateway/internal/store"
 	workflowcore "agentwritegateway/internal/workflow"
+
+	"go.yaml.in/yaml/v3"
 )
 
 func TestPlanGetStartAndLegacyDeprecation(t *testing.T) {
@@ -110,6 +112,35 @@ func TestContractValidation(t *testing.T) {
 	decodeResponse(t, response, &validation)
 	if !validation.Valid || validation.Name != "identity-api" || validation.ContentHash == "" {
 		t.Fatalf("validation=%#v", validation)
+	}
+}
+
+func TestOpenAPIIsParseableAndDocumentsRequiredRoutes(t *testing.T) {
+	data, err := os.ReadFile("../../api/openapi/v1alpha1.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		OpenAPI string                    `yaml:"openapi"`
+		Paths   map[string]map[string]any `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.OpenAPI != "3.1.0" {
+		t.Fatalf("openapi=%q", document.OpenAPI)
+	}
+	for path, method := range map[string]string{
+		"/v1/plans": "post", "/v1/plans/{id}": "get", "/v1/release-runs": "post",
+		"/v1/release-runs/{id}:pause": "post", "/v1/release-runs/{id}:resume": "post",
+		"/v1/release-runs/{id}:cancel": "post", "/v1/approvals": "get",
+		"/v1/approvals/{id}:approve": "post", "/v1/approvals/{id}:deny": "post",
+		"/v1/approvals/{id}:revoke": "post", "/v1/contracts:validate": "post",
+		"/v1/runners": "get", "/v1/runners/{id}:freeze": "post",
+	} {
+		if _, ok := document.Paths[path][method]; !ok {
+			t.Errorf("OpenAPI missing %s %s", method, path)
+		}
 	}
 }
 
