@@ -119,6 +119,35 @@ func (s *Store) GetRun(id string) (*domain.ReleaseRun, error) {
 	return scanRun(s.pool.QueryRow(context.Background(), selectRunSQL, id))
 }
 
+func (s *Store) SavePlan(plan domain.ReleasePlan) error {
+	payload, err := json.Marshal(plan)
+	if err != nil {
+		return err
+	}
+	_, err = s.pool.Exec(context.Background(), `
+INSERT INTO release_plans (id,plan_hash,environment,payload,created_at,expires_at)
+VALUES ($1,$2,$3,$4,$5,$6)
+ON CONFLICT (id) DO UPDATE SET plan_hash=EXCLUDED.plan_hash,environment=EXCLUDED.environment,
+payload=EXCLUDED.payload,created_at=EXCLUDED.created_at,expires_at=EXCLUDED.expires_at`,
+		plan.ID, plan.PlanHash, plan.Environment, payload, plan.CreatedAt, plan.ExpiresAt)
+	return err
+}
+
+func (s *Store) GetPlan(id string) (domain.ReleasePlan, error) {
+	var payload []byte
+	if err := s.pool.QueryRow(context.Background(), `SELECT payload FROM release_plans WHERE id=$1`, id).Scan(&payload); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.ReleasePlan{}, store.ErrNotFound
+		}
+		return domain.ReleasePlan{}, err
+	}
+	var plan domain.ReleasePlan
+	if err := json.Unmarshal(payload, &plan); err != nil {
+		return domain.ReleasePlan{}, err
+	}
+	return plan, nil
+}
+
 func (s *Store) ListRuns() ([]*domain.ReleaseRun, error) {
 	rows, err := s.pool.Query(context.Background(), `SELECT payload FROM release_runs ORDER BY created_at DESC, id`)
 	if err != nil {

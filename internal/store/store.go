@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	ErrNotFound             = errors.New("release run not found")
+	ErrNotFound             = errors.New("resource not found")
 	ErrConflict             = errors.New("release run state version conflict")
 	ErrDuplicateExecution   = errors.New("duplicate adapter idempotency key")
 	ErrUnknownExternalState = errors.New("external execution state is unknown")
@@ -89,6 +89,8 @@ type RunnerJournal interface {
 type DurableStore interface {
 	Store
 	RunnerJournal
+	SavePlan(domain.ReleasePlan) error
+	GetPlan(string) (domain.ReleasePlan, error)
 	CreateRunAtomic(*domain.ReleaseRun, []domain.AuditEvent, []domain.OutboxEvent) (*domain.ReleaseRun, bool, error)
 	UpdateRunAtomic(*domain.ReleaseRun, int64, []domain.AuditEvent, []domain.OutboxEvent) error
 	ReserveExecution(ExecutionRecord, domain.AuditEvent, domain.OutboxEvent) (ExecutionRecord, bool, error)

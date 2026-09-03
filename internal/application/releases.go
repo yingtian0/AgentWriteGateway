@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -26,13 +25,12 @@ type Releases struct {
 	workflows     WorkflowController
 	now           func() time.Time
 	mu            sync.RWMutex
-	plans         map[string]domain.ReleasePlan
 	runners       map[string]domain.RunnerInfo
 	frozenRunners map[string]domain.RunnerInfo
 }
 
 func NewReleases(releasePlanner *planner.Planner, st store.DurableStore, workflows WorkflowController) *Releases {
-	r := &Releases{planner: releasePlanner, store: st, workflows: workflows, now: time.Now, plans: make(map[string]domain.ReleasePlan), runners: make(map[string]domain.RunnerInfo), frozenRunners: make(map[string]domain.RunnerInfo)}
+	r := &Releases{planner: releasePlanner, store: st, workflows: workflows, now: time.Now, runners: make(map[string]domain.RunnerInfo), frozenRunners: make(map[string]domain.RunnerInfo)}
 	for _, service := range releasePlanner.Services() {
 		for _, group := range service.RunnerGroups {
 			if group != "" {
@@ -50,7 +48,7 @@ func (r *Releases) Plan(request domain.ReleaseRequest) (domain.ReleasePlan, erro
 	}
 	plan, err := r.planner.Plan(request)
 	if err == nil {
-		r.rememberPlan(plan)
+		err = r.store.SavePlan(plan)
 	}
 	return plan, err
 }
@@ -61,7 +59,7 @@ func (r *Releases) PlanIntent(intent domain.ReleaseIntent) (domain.ReleasePlan, 
 	}
 	plan, err := r.planner.PlanIntent(intent)
 	if err == nil {
-		r.rememberPlan(plan)
+		err = r.store.SavePlan(plan)
 	}
 	return plan, err
 }
@@ -74,16 +72,14 @@ func (r *Releases) PlanIntentForTenant(tenant string, intent domain.ReleaseInten
 }
 
 func (r *Releases) GetPlan(tenant, id string) (domain.ReleasePlan, error) {
-	r.mu.RLock()
-	plan, ok := r.plans[id]
-	r.mu.RUnlock()
-	if !ok {
-		return domain.ReleasePlan{}, store.ErrNotFound
+	plan, err := r.store.GetPlan(id)
+	if err != nil {
+		return domain.ReleasePlan{}, err
 	}
 	if planTenant(plan) != normalized(tenant, "default") {
 		return domain.ReleasePlan{}, tenantBoundaryError()
 	}
-	return clonePlan(plan), nil
+	return plan, nil
 }
 
 func (r *Releases) StartIntentForTenant(ctx context.Context, tenant string, intent domain.ReleaseIntent) (*domain.ReleaseRun, bool, error) {
@@ -222,24 +218,6 @@ func (r *Releases) FreezeRunner(tenant, id, actor string) (domain.RunnerInfo, er
 	runner.FrozenAt = &now
 	r.frozenRunners[runner.TenantID+"\x00"+id] = runner
 	return runner, nil
-}
-
-func (r *Releases) rememberPlan(plan domain.ReleasePlan) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.plans[plan.ID] = clonePlan(plan)
-}
-
-func clonePlan(plan domain.ReleasePlan) domain.ReleasePlan {
-	data, err := json.Marshal(plan)
-	if err != nil {
-		panic(err)
-	}
-	var result domain.ReleasePlan
-	if err := json.Unmarshal(data, &result); err != nil {
-		panic(err)
-	}
-	return result
 }
 
 func planTenant(plan domain.ReleasePlan) string {
