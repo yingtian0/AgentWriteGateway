@@ -21,17 +21,18 @@ import (
 var ErrInvalidRequest = errors.New("invalid release request")
 
 type Releases struct {
-	planner   *planner.Planner
-	store     store.DurableStore
-	workflows WorkflowController
-	now       func() time.Time
-	mu        sync.RWMutex
-	plans     map[string]domain.ReleasePlan
-	runners   map[string]domain.RunnerInfo
+	planner       *planner.Planner
+	store         store.DurableStore
+	workflows     WorkflowController
+	now           func() time.Time
+	mu            sync.RWMutex
+	plans         map[string]domain.ReleasePlan
+	runners       map[string]domain.RunnerInfo
+	frozenRunners map[string]domain.RunnerInfo
 }
 
 func NewReleases(releasePlanner *planner.Planner, st store.DurableStore, workflows WorkflowController) *Releases {
-	r := &Releases{planner: releasePlanner, store: st, workflows: workflows, now: time.Now, plans: make(map[string]domain.ReleasePlan), runners: make(map[string]domain.RunnerInfo)}
+	r := &Releases{planner: releasePlanner, store: st, workflows: workflows, now: time.Now, plans: make(map[string]domain.ReleasePlan), runners: make(map[string]domain.RunnerInfo), frozenRunners: make(map[string]domain.RunnerInfo)}
 	for _, service := range releasePlanner.Services() {
 		for _, group := range service.RunnerGroups {
 			if group != "" {
@@ -181,6 +182,9 @@ func (r *Releases) ListRunners(tenant string) []domain.RunnerInfo {
 	runners := make([]domain.RunnerInfo, 0, len(r.runners))
 	for _, runner := range r.runners {
 		runner.TenantID = tenant
+		if frozen, ok := r.frozenRunners[tenant+"\x00"+runner.ID]; ok {
+			runner = frozen
+		}
 		runners = append(runners, runner)
 	}
 	sort.Slice(runners, func(i, j int) bool { return runners[i].ID < runners[j].ID })
@@ -203,7 +207,7 @@ func (r *Releases) FreezeRunner(tenant, id, actor string) (domain.RunnerInfo, er
 	runner.Capacity = 0
 	runner.FrozenBy = actor
 	runner.FrozenAt = &now
-	r.runners[id] = runner
+	r.frozenRunners[runner.TenantID+"\x00"+id] = runner
 	return runner, nil
 }
 

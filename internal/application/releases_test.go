@@ -158,6 +158,10 @@ func TestListApprovalsAndRunnerFreezeStayInsideApplicationBoundary(t *testing.T)
 	if err != nil || runner.Status != domain.RunnerFrozen || runner.Capacity != 0 {
 		t.Fatalf("runner=%#v err=%v", runner, err)
 	}
+	otherTenant := service.ListRunners("tenant-b")
+	if len(otherTenant) != 1 || otherTenant[0].Status == domain.RunnerFrozen || otherTenant[0].FrozenBy != "" {
+		t.Fatalf("runner freeze crossed tenant boundary: %#v", otherTenant)
+	}
 }
 
 func code(err error) domain.ReasonCode {

@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 
 	"agentwritegateway/internal/domain"
 	"agentwritegateway/internal/executor"
 	"agentwritegateway/internal/policy"
+	"agentwritegateway/internal/scheduler"
 	"agentwritegateway/internal/store"
 	verificationcore "agentwritegateway/internal/verification"
 
@@ -19,11 +21,13 @@ import (
 )
 
 const (
-	ActivityPersistRun   = "PersistRun"
-	ActivityEvaluateStep = "EvaluateStep"
-	ActivityDeploy       = "Deploy"
-	ActivityVerify       = "Verify"
-	ActivityRollback     = "Rollback"
+	ActivityPersistRun       = "PersistRun"
+	ActivityEvaluateStep     = "EvaluateStep"
+	ActivityDeploy           = "Deploy"
+	ActivityVerify           = "Verify"
+	ActivityRollback         = "Rollback"
+	ActivityAcquireSchedule  = "AcquireSchedule"
+	ActivityCompleteSchedule = "CompleteSchedule"
 )
 
 type AuditIntent struct {
@@ -74,16 +78,78 @@ type RollbackResult struct {
 	Deployment executor.Deployment
 }
 
+type ScheduleInput struct {
+	RunID string
+	Step  scheduler.Step
+}
+
+type ScheduleResult struct {
+	Allowed   bool
+	Reason    string
+	BlockedBy []scheduler.Blocked
+}
+
+type ScheduleCompleteInput struct {
+	RunID  string
+	StepID string
+	Failed bool
+}
+
 type Activities struct {
 	Store       store.DurableStore
 	Policy      *policy.Engine
 	Executor    executor.ReleaseExecutor
 	AdapterName string
 	Now         func() time.Time
+	Scheduler   *scheduler.Scheduler
+	Capacity    func(ScheduleInput) scheduler.Capacity
+	scheduleMu  sync.Mutex
+	scheduled   map[string]scheduler.Dispatch
 }
 
 func NewActivities(st store.DurableStore, policyEngine *policy.Engine, releaseExecutor executor.ReleaseExecutor) *Activities {
-	return &Activities{Store: st, Policy: policyEngine, Executor: releaseExecutor, AdapterName: "mock", Now: time.Now}
+	coordinator, err := scheduler.New(scheduler.DefaultLimits(), scheduler.CircuitPolicy{MinimumSamples: 5, WindowSize: 20, ErrorRate: .5})
+	if err != nil {
+		panic(err)
+	}
+	return &Activities{Store: st, Policy: policyEngine, Executor: releaseExecutor, AdapterName: "mock", Now: time.Now, Scheduler: coordinator, Capacity: func(ScheduleInput) scheduler.Capacity {
+		return scheduler.Capacity{RunnerAvailable: 20, AdapterRemaining: 20, QueueLimit: 100}
+	}, scheduled: make(map[string]scheduler.Dispatch)}
+}
+
+func (a *Activities) AcquireSchedule(_ context.Context, input ScheduleInput) (ScheduleResult, error) {
+	key := input.RunID + "\x00" + input.Step.ID
+	a.scheduleMu.Lock()
+	defer a.scheduleMu.Unlock()
+	if _, exists := a.scheduled[key]; exists {
+		return ScheduleResult{Allowed: true}, nil
+	}
+	capacity := a.Capacity(input)
+	results := a.Scheduler.Dispatch([]scheduler.Step{input.Step}, capacity)
+	if len(results) != 1 {
+		return ScheduleResult{}, errors.New("scheduler returned an invalid result count")
+	}
+	result := results[0]
+	if result.Err != nil {
+		return ScheduleResult{Reason: result.Err.Error(), BlockedBy: result.BlockedBy}, nil
+	}
+	if len(result.BlockedBy) > 0 {
+		return ScheduleResult{Reason: "concurrency budget exhausted", BlockedBy: result.BlockedBy}, nil
+	}
+	a.scheduled[key] = result
+	return ScheduleResult{Allowed: true}, nil
+}
+
+func (a *Activities) CompleteSchedule(_ context.Context, input ScheduleCompleteInput) (scheduler.CircuitState, error) {
+	key := input.RunID + "\x00" + input.StepID
+	a.scheduleMu.Lock()
+	defer a.scheduleMu.Unlock()
+	dispatch, exists := a.scheduled[key]
+	if !exists {
+		return a.Scheduler.CircuitState(""), nil
+	}
+	delete(a.scheduled, key)
+	return a.Scheduler.Complete(dispatch, input.Failed), nil
 }
 
 func (a *Activities) PersistRun(_ context.Context, input PersistInput) (domain.ReleaseRun, error) {
