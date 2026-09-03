@@ -83,7 +83,7 @@ Packet 04 provides a Runner process scaffold with validated GitHub Actions and D
 go run ./cmd/runner -config config/runner.example.yaml -check-config
 ```
 
-The Runner execution core invokes the public typed Adapter SDK only after Grant, identity, policy, audit, and replay checks. It exposes no arbitrary command, HTTP, workflow path, or cloud API field. Production configuration requires durable journal storage, customer-managed trust keys, allow-listed GitHub/Datadog targets, and Runner-local short-lived credential files. The inbound Action Grant transport is intentionally deferred to Packet 05, so the health endpoint continues to report `accepting_actions: false`.
+The Runner execution core invokes the public typed Adapter SDK only after Grant, identity, policy, audit, and replay checks. It exposes no arbitrary command, HTTP, workflow path, or cloud API field. Production configuration requires durable journal storage, customer-managed trust keys, allow-listed GitHub/Datadog targets, and Runner-local short-lived credential files. The inbound Action Grant transport is not enabled in this prototype, so the health endpoint continues to report `accepting_actions: false`; Packet 05's control-plane interfaces do not bypass that boundary.
 
 GitHub target workflows must declare the fixed `awg_*` inputs and use the correlation run name `awg:${{ inputs.awg_idempotency_key }}`. A dispatch timeout is reconciled by that title and is never blindly retried. See ADR-0007 before enabling a staging adapter.
 
