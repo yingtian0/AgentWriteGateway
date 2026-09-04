@@ -10,14 +10,17 @@ const (
 )
 
 type Service struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	OwnerTeam       string    `json:"owner_team"`
-	Repository      string    `json:"repository"`
-	ReleasePhase    int       `json:"release_phase"`
-	Dependencies    []string  `json:"dependencies"`
-	MetadataVersion string    `json:"metadata_version"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              string                 `json:"id"`
+	Name            string                 `json:"name"`
+	OwnerTeam       string                 `json:"owner_team"`
+	RiskTier        string                 `json:"risk_tier,omitempty"`
+	Repository      string                 `json:"repository"`
+	ReleasePhase    int                    `json:"release_phase"`
+	Dependencies    []string               `json:"dependencies"`
+	RunnerGroups    map[Environment]string `json:"runner_groups,omitempty"`
+	FailureDomains  []string               `json:"failure_domains,omitempty"`
+	MetadataVersion string                 `json:"metadata_version"`
+	UpdatedAt       time.Time              `json:"updated_at"`
 }
 
 type AgentIdentity struct {
@@ -37,25 +40,40 @@ type Change struct {
 type ReleaseRequest struct {
 	RequestID      string        `json:"request_id"`
 	ReleaseVersion string        `json:"release_version"`
+	TenantID       string        `json:"tenant_id,omitempty"`
 	Environment    Environment   `json:"environment"`
+	Region         string        `json:"region,omitempty"`
+	Cluster        string        `json:"cluster,omitempty"`
 	RequestedBy    string        `json:"requested_by"`
 	Agent          AgentIdentity `json:"delegated_agent"`
 	Changes        []Change      `json:"changes"`
 }
 
 type PlanStep struct {
-	Service              string       `json:"service"`
-	DesiredVersion       string       `json:"desired_version"`
-	Phase                int          `json:"phase"`
-	Profile              string       `json:"profile,omitempty"`
-	Dependencies         []Dependency `json:"dependencies,omitempty"`
-	RequiredCapabilities []Capability `json:"required_capabilities,omitempty"`
-	ContractHash         string       `json:"contract_hash,omitempty"`
-	ProfileHash          string       `json:"profile_hash,omitempty"`
-	ChangeHash           string       `json:"change_hash,omitempty"`
-	VerificationRequired bool         `json:"verification_required"`
-	ObservationWindow    string       `json:"observation_window,omitempty"`
-	RollbackMode         RollbackMode `json:"rollback_mode"`
+	Service              string            `json:"service"`
+	DesiredVersion       string            `json:"desired_version"`
+	Phase                int               `json:"phase"`
+	Profile              string            `json:"profile,omitempty"`
+	Dependencies         []Dependency      `json:"dependencies,omitempty"`
+	RequiredCapabilities []Capability      `json:"required_capabilities,omitempty"`
+	ContractHash         string            `json:"contract_hash,omitempty"`
+	ProfileHash          string            `json:"profile_hash,omitempty"`
+	ChangeHash           string            `json:"change_hash,omitempty"`
+	VerificationRequired bool              `json:"verification_required"`
+	ObservationWindow    string            `json:"observation_window,omitempty"`
+	RollbackMode         RollbackMode      `json:"rollback_mode"`
+	Scheduling           SchedulingContext `json:"scheduling"`
+}
+
+type SchedulingContext struct {
+	TenantID       string      `json:"tenant_id"`
+	Environment    Environment `json:"environment"`
+	Region         string      `json:"region"`
+	Cluster        string      `json:"cluster"`
+	Team           string      `json:"team"`
+	RiskTier       string      `json:"risk_tier"`
+	RunnerGroup    string      `json:"runner_group"`
+	FailureDomains []string    `json:"failure_domains,omitempty"`
 }
 
 type PlanPhase struct {
@@ -135,6 +153,7 @@ const (
 	ApprovalApproved ApprovalStatus = "APPROVED"
 	ApprovalDenied   ApprovalStatus = "DENIED"
 	ApprovalExpired  ApprovalStatus = "EXPIRED"
+	ApprovalRevoked  ApprovalStatus = "REVOKED"
 )
 
 type Approval struct {
@@ -146,6 +165,38 @@ type Approval struct {
 	ExpiresAt     time.Time      `json:"expires_at"`
 	DecidedBy     string         `json:"decided_by,omitempty"`
 	DecidedAt     *time.Time     `json:"decided_at,omitempty"`
+}
+
+type ApprovalSummary struct {
+	Approval Approval `json:"approval"`
+	RunID    string   `json:"run_id"`
+	Service  string   `json:"service"`
+	TenantID string   `json:"tenant_id"`
+}
+
+type RunnerStatus string
+
+const (
+	RunnerUnknown RunnerStatus = "UNKNOWN"
+	RunnerReady   RunnerStatus = "READY"
+	RunnerFrozen  RunnerStatus = "FROZEN"
+)
+
+type RunnerInfo struct {
+	ID       string       `json:"id"`
+	TenantID string       `json:"tenant_id"`
+	Group    string       `json:"group"`
+	Status   RunnerStatus `json:"status"`
+	Capacity int          `json:"capacity"`
+	LastSeen time.Time    `json:"last_seen,omitempty"`
+	FrozenBy string       `json:"frozen_by,omitempty"`
+	FrozenAt *time.Time   `json:"frozen_at,omitempty"`
+}
+
+type ContractValidation struct {
+	Valid       bool   `json:"valid"`
+	Name        string `json:"name,omitempty"`
+	ContentHash string `json:"content_hash,omitempty"`
 }
 
 type Execution struct {
@@ -201,6 +252,7 @@ const (
 type ReleaseStep struct {
 	Service              string          `json:"service"`
 	Phase                int             `json:"phase"`
+	Wave                 int             `json:"wave"`
 	Status               StepStatus      `json:"status"`
 	Change               Change          `json:"change"`
 	Policy               *PolicyDecision `json:"policy,omitempty"`
@@ -225,6 +277,8 @@ type ReleaseRun struct {
 	SubjectIssuer     string        `json:"subject_issuer,omitempty"`
 	UserIdentityProof string        `json:"user_identity_proof,omitempty"`
 	TenantID          string        `json:"tenant_id,omitempty"`
+	Region            string        `json:"region,omitempty"`
+	Cluster           string        `json:"cluster,omitempty"`
 	RunnerGroup       string        `json:"runner_group,omitempty"`
 	DelegationRef     string        `json:"delegation_ref,omitempty"`
 	Agent             AgentIdentity `json:"delegated_agent"`

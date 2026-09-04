@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 type Memory struct {
 	mu             sync.RWMutex
 	runs           map[string]*domain.ReleaseRun
+	plans          map[string]domain.ReleasePlan
 	runByRequestID map[string]string
 	audit          map[string][]domain.AuditEvent
 	executions     map[string]ExecutionRecord
@@ -25,11 +27,28 @@ type Memory struct {
 
 func NewMemory() *Memory {
 	return &Memory{
-		runs: make(map[string]*domain.ReleaseRun), runByRequestID: make(map[string]string),
+		runs: make(map[string]*domain.ReleaseRun), plans: make(map[string]domain.ReleasePlan), runByRequestID: make(map[string]string),
 		audit: make(map[string][]domain.AuditEvent), executions: make(map[string]ExecutionRecord),
 		projections:   make(map[string]*domain.ReleaseRun),
 		runnerActions: make(map[string]RunnerActionRecord), runnerByKey: make(map[string]string),
 	}
+}
+
+func (m *Memory) SavePlan(plan domain.ReleasePlan) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.plans[plan.ID] = clonePlan(plan)
+	return nil
+}
+
+func (m *Memory) GetPlan(id string) (domain.ReleasePlan, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	plan, ok := m.plans[id]
+	if !ok {
+		return domain.ReleasePlan{}, ErrNotFound
+	}
+	return clonePlan(plan), nil
 }
 
 func (m *Memory) SetRunnerJournalError(err error) {
@@ -67,6 +86,22 @@ func (m *Memory) GetRun(id string) (*domain.ReleaseRun, error) {
 		return nil, ErrNotFound
 	}
 	return cloneRun(run), nil
+}
+
+func (m *Memory) ListRuns() ([]*domain.ReleaseRun, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	runs := make([]*domain.ReleaseRun, 0, len(m.runs))
+	for _, run := range m.runs {
+		runs = append(runs, cloneRun(run))
+	}
+	sort.Slice(runs, func(i, j int) bool {
+		if runs[i].CreatedAt.Equal(runs[j].CreatedAt) {
+			return runs[i].ID < runs[j].ID
+		}
+		return runs[i].CreatedAt.After(runs[j].CreatedAt)
+	})
+	return runs, nil
 }
 
 func (m *Memory) UpdateRun(run *domain.ReleaseRun, expectedVersion int64) error {
@@ -313,4 +348,16 @@ func cloneExecution(record ExecutionRecord) ExecutionRecord {
 		}
 	}
 	return result
+}
+
+func clonePlan(plan domain.ReleasePlan) domain.ReleasePlan {
+	data, err := json.Marshal(plan)
+	if err != nil {
+		panic(err)
+	}
+	var cloned domain.ReleasePlan
+	if err := json.Unmarshal(data, &cloned); err != nil {
+		panic(err)
+	}
+	return cloned
 }

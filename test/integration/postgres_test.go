@@ -51,6 +51,14 @@ func TestPostgresMigrationAndStoreContract(t *testing.T) {
 	}
 	defer persistent.Close()
 	now := time.Now().UTC()
+	plan := domain.ReleasePlan{ID: "integration-plan-" + now.Format("150405.000000000"), Hash: "sha256:integration", PlanHash: "sha256:integration", Environment: domain.EnvironmentStaging, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+	if err := persistent.SavePlan(plan); err != nil {
+		t.Fatal(err)
+	}
+	storedPlan, err := persistent.GetPlan(plan.ID)
+	if err != nil || storedPlan.PlanHash != plan.PlanHash {
+		t.Fatalf("stored plan=%#v err=%v", storedPlan, err)
+	}
 	run := &domain.ReleaseRun{ID: "integration-run-" + now.Format("150405.000000000"), RequestID: "integration-request-" + now.Format("150405.000000000"), WorkflowID: "integration-workflow-" + now.Format("150405.000000000"), ReleaseVersion: "release-1", Environment: domain.EnvironmentStaging, RequestedBy: "integration", Status: domain.RunPending, StateVersion: 1, CreatedAt: now, UpdatedAt: now}
 	audit := integrationAudit("audit-create-"+run.ID, run.ID, now)
 	outbox := domain.OutboxEvent{ID: "outbox-create-" + run.ID, AggregateType: "release_run", AggregateID: run.ID, EventType: "release.created", CreatedAt: now, AvailableAt: now}

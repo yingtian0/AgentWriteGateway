@@ -13,6 +13,7 @@ type ApprovalSignal struct {
 	Actor      string   `json:"actor"`
 	Roles      []string `json:"roles"`
 	Approve    bool     `json:"approve"`
+	Action     string   `json:"action,omitempty"`
 }
 
 type ControlSignal struct {
