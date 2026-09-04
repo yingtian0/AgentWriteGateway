@@ -9,6 +9,7 @@ import (
 	"themisy/internal/audit"
 	"themisy/internal/domain"
 	"themisy/internal/executor"
+	"themisy/internal/scheduler"
 	"themisy/pkg/adapter"
 
 	"go.temporal.io/sdk/temporal"
@@ -41,6 +42,9 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 		if step.Status == domain.StepSucceeded {
 			succeeded[step.Service] = true
 		}
+	}
+	if err := assignWaves(&run); err != nil {
+		return run, err
 	}
 	for index := range run.Steps {
 		if cancelled := cancelChannel.ReceiveAsync(&ControlSignal{}); cancelled {
@@ -90,6 +94,18 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 			}
 			step = &run.Steps[index]
 		}
+		var scheduleResult ScheduleResult
+		if err := workflow.ExecuteActivity(activityContext, ActivityAcquireSchedule, ScheduleInput{RunID: run.ID, Step: schedulingStep(run, *step)}).Get(activityContext, &scheduleResult); err != nil {
+			return run, err
+		}
+		if !scheduleResult.Allowed {
+			step.Status = domain.StepBlocked
+			step.Failure = "dispatch backpressured: " + scheduleResult.Reason
+			run.Status = domain.RunBlocked
+			cancelDownstream(&run, index+1)
+			run.UpdatedAt = workflow.Now(ctx).UTC()
+			return persist(activityContext, run, []AuditIntent{{ActorType: "system", ActorID: "scheduler", Action: "dispatch.block", ResourceType: "release_step", ResourceID: step.Service, Result: "BLOCKED", Details: map[string]any{"reason": scheduleResult.Reason, "budget": scheduleResult.BlockedBy}}}, "dispatch.backpressured")
+		}
 		step.Status = domain.StepExecuting
 		run.UpdatedAt = workflow.Now(ctx).UTC()
 		run, err = persist(activityContext, run, nil, "deployment.executing")
@@ -100,6 +116,9 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 		deployInput := DeployInput{RunID: run.ID, RequestedBy: run.RequestedBy, AgentID: run.Agent.ID, Service: step.Service, Environment: string(run.Environment), DesiredVersion: step.Change.DesiredVersion, IdempotencyKey: fmt.Sprintf("%s/%s/%s/%s", run.ID, run.Environment, step.Service, step.Change.DesiredVersion)}
 		var deployed DeployResult
 		if err := workflow.ExecuteActivity(activityContext, ActivityDeploy, deployInput).Get(activityContext, &deployed); err != nil {
+			if completeErr := completeScheduling(activityContext, run.ID, step.Service, true); completeErr != nil {
+				return run, completeErr
+			}
 			step.Status = domain.StepUnknown
 			step.Failure = "deployment state unknown; reconciliation required"
 			run.Status = domain.RunBlocked
@@ -113,6 +132,9 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 		}
 		step.Execution = &deployed.Execution
 		if !step.VerificationRequired {
+			if err := completeScheduling(activityContext, run.ID, step.Service, false); err != nil {
+				return run, err
+			}
 			step.Status = domain.StepSucceeded
 			succeeded[step.Service] = true
 			run.UpdatedAt = workflow.Now(ctx).UTC()
@@ -134,6 +156,9 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 		}
 		var verification executor.VerificationResult
 		if err := workflow.ExecuteActivity(activityContext, ActivityVerify, VerifyInput{Deployment: deployed.Deployment}).Get(activityContext, &verification); err != nil {
+			if completeErr := completeScheduling(activityContext, run.ID, step.Service, true); completeErr != nil {
+				return run, completeErr
+			}
 			step.Status = domain.StepBlocked
 			step.Failure = "verification unavailable: " + err.Error()
 			run.Status = domain.RunBlocked
@@ -144,6 +169,9 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 		step.Verification = verificationProjection(verification, workflow.Now(ctx).UTC())
 		if verification.Outcome() != adapter.VerificationPass {
 			if step.RollbackMode != domain.RollbackAutomatic {
+				if err := completeScheduling(activityContext, run.ID, step.Service, true); err != nil {
+					return run, err
+				}
 				step.Status = domain.StepEscalated
 				step.Failure = "verification " + string(verification.Outcome()) + "; automatic rollback is not authorized: " + string(step.RollbackMode)
 				run.Status = domain.RunEscalated
@@ -187,10 +215,16 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 				}
 			}
 			cancelDownstream(&run, index+1)
+			if err := completeScheduling(activityContext, run.ID, step.Service, true); err != nil {
+				return run, err
+			}
 			run.UpdatedAt = workflow.Now(ctx).UTC()
 			return persist(activityContext, run, nil, "rollback.finished")
 		}
 		step.Status = domain.StepSucceeded
+		if err := completeScheduling(activityContext, run.ID, step.Service, false); err != nil {
+			return run, err
+		}
 		succeeded[step.Service] = true
 		run.UpdatedAt = workflow.Now(ctx).UTC()
 		run, err = persist(activityContext, run, []AuditIntent{{ActorType: "system", ActorID: "verifier", Action: "deployment.verify", ResourceType: "service", ResourceID: step.Service, Result: "SUCCEEDED", Details: audit.EvidenceDetails(verification.Evidence)}}, "step.succeeded")
@@ -201,6 +235,71 @@ func ReleaseWorkflow(ctx workflow.Context, input ReleaseInput) (domain.ReleaseRu
 	run.Status = domain.RunSucceeded
 	run.UpdatedAt = workflow.Now(ctx).UTC()
 	return persist(activityContext, run, []AuditIntent{{ActorType: "system", ActorID: "temporal", Action: "release.workflow.complete", ResourceType: "release_run", ResourceID: run.ID, Result: "SUCCEEDED"}}, "release.succeeded")
+}
+
+func completeScheduling(ctx workflow.Context, runID, stepID string, failed bool) error {
+	return workflow.ExecuteActivity(ctx, ActivityCompleteSchedule, ScheduleCompleteInput{RunID: runID, StepID: stepID, Failed: failed}).Get(ctx, nil)
+}
+
+func schedulingStep(run domain.ReleaseRun, releaseStep domain.ReleaseStep) scheduler.Step {
+	for _, phase := range run.Plan.Phases {
+		for _, step := range phase.Steps {
+			if step.Service != releaseStep.Service {
+				continue
+			}
+			dependencies := make([]string, 0)
+			for _, dependency := range step.Dependencies {
+				if dependency.Service != "" && dependency.Type.EnforcesRolloutOrder() {
+					dependencies = append(dependencies, dependency.Service)
+				}
+			}
+			return scheduler.Step{ID: step.Service, Phase: step.Phase, Tenant: step.Scheduling.TenantID, Environment: string(step.Scheduling.Environment), Region: step.Scheduling.Region, Cluster: step.Scheduling.Cluster, Team: step.Scheduling.Team, RiskTier: step.Scheduling.RiskTier, RunnerGroup: step.Scheduling.RunnerGroup, FailureDomains: append([]string(nil), step.Scheduling.FailureDomains...), Dependencies: dependencies}
+		}
+	}
+	return scheduler.Step{ID: releaseStep.Service, Phase: releaseStep.Phase, Tenant: run.TenantID, Environment: string(run.Environment), Region: run.Region, Cluster: run.Cluster}
+}
+
+func assignWaves(run *domain.ReleaseRun) error {
+	planned := make(map[string]bool, len(run.Steps))
+	selected := make(map[string]bool, len(run.Steps))
+	for _, step := range run.Steps {
+		selected[step.Service] = true
+	}
+	steps := make([]scheduler.Step, 0, len(run.Steps))
+	for _, phase := range run.Plan.Phases {
+		for _, step := range phase.Steps {
+			planned[step.Service] = true
+			dependencies := make([]string, 0)
+			for _, dependency := range step.Dependencies {
+				if dependency.Service != "" && dependency.Type.EnforcesRolloutOrder() && selected[dependency.Service] {
+					dependencies = append(dependencies, dependency.Service)
+				}
+			}
+			steps = append(steps, scheduler.Step{
+				ID: step.Service, Phase: step.Phase, Tenant: step.Scheduling.TenantID,
+				Environment: string(step.Scheduling.Environment), Region: step.Scheduling.Region,
+				Cluster: step.Scheduling.Cluster, Team: step.Scheduling.Team, RiskTier: step.Scheduling.RiskTier, RunnerGroup: step.Scheduling.RunnerGroup,
+				FailureDomains: append([]string(nil), step.Scheduling.FailureDomains...), Dependencies: dependencies,
+			})
+		}
+	}
+	waves, err := scheduler.BuildWaves(steps, scheduler.DefaultLimits())
+	if err != nil {
+		return fmt.Errorf("build safe release waves: %w", err)
+	}
+	waveByService := make(map[string]int, len(run.Steps))
+	for _, wave := range waves {
+		for _, step := range wave.Steps {
+			waveByService[step.ID] = wave.Number
+		}
+	}
+	for index := range run.Steps {
+		if !planned[run.Steps[index].Service] {
+			return fmt.Errorf("release step %q is absent from plan", run.Steps[index].Service)
+		}
+		run.Steps[index].Wave = waveByService[run.Steps[index].Service]
+	}
+	return nil
 }
 
 func verificationProjection(result executor.VerificationResult, checkedAt time.Time) *domain.Verification {
@@ -264,15 +363,31 @@ func awaitApproval(activityContext, ctx workflow.Context, run domain.ReleaseRun,
 			run.UpdatedAt = workflow.Now(ctx).UTC()
 			return persist(activityContext, run, nil, "approval.expired")
 		}
+		action := signal.Action
+		if action == "" {
+			if signal.Approve {
+				action = "approve"
+			} else {
+				action = "deny"
+			}
+		}
 		if signal.ApprovalID != run.Steps[index].Approval.ID || signal.Actor == "" ||
-			(signal.Approve && signal.Actor == run.RequestedBy) ||
-			(signal.Approve && !containsAll(signal.Roles, run.Steps[index].Approval.RequiredRoles)) {
+			(action == "approve" && signal.Actor == run.RequestedBy) ||
+			((action == "approve" || action == "revoke") && !containsAll(signal.Roles, run.Steps[index].Approval.RequiredRoles)) {
 			continue
 		}
 		decidedAt := workflow.Now(ctx).UTC()
 		run.Steps[index].Approval.DecidedBy = signal.Actor
 		run.Steps[index].Approval.DecidedAt = &decidedAt
-		if !signal.Approve {
+		if action == "revoke" {
+			run.Steps[index].Approval.Status = domain.ApprovalRevoked
+			run.Steps[index].Status = domain.StepBlocked
+			run.Status = domain.RunBlocked
+			cancelDownstream(&run, index+1)
+			run.UpdatedAt = decidedAt
+			return persist(activityContext, run, []AuditIntent{{ActorType: "user", ActorID: signal.Actor, Action: "approval.revoke", ResourceType: "approval", ResourceID: signal.ApprovalID, Result: "REVOKED"}}, "approval.revoked")
+		}
+		if action != "approve" {
 			run.Steps[index].Approval.Status = domain.ApprovalDenied
 			run.Steps[index].Status = domain.StepBlocked
 			run.Status = domain.RunBlocked

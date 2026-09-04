@@ -3,7 +3,10 @@
   "kind": "ReleaseIntent",
   "request_id": "demo-release-001",
   "release_version": "release-2026-08-11",
+  "tenant_id": "example-tenant",
   "environment": "production",
+  "region": "ap-northeast-1",
+  "cluster": "production-ap-northeast-1",
   "requested_by": "user-123",
   "delegated_agent": {
     "id": "agent-456",

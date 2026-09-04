@@ -1,0 +1,321 @@
+openapi: 3.1.0
+info:
+  title: Themisy API
+  version: v1alpha1
+  description: Safe change planning and release control. This document is the public REST source of truth.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /v1/plans:
+    post:
+      operationId: createPlan
+      summary: Create a canonical release plan without executing it
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReleaseIntent'}
+      responses:
+        '200': {$ref: '#/components/responses/Plan'}
+        '422': {$ref: '#/components/responses/Error'}
+  /v1/plans/{id}:
+    get:
+      operationId: getPlan
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        '200': {$ref: '#/components/responses/Plan'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /v1/release-runs:
+    post:
+      operationId: startRelease
+      summary: Start a durable release from structured intent
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReleaseIntent'}
+      responses:
+        '201': {$ref: '#/components/responses/Run'}
+        '200': {$ref: '#/components/responses/Run'}
+        '409': {$ref: '#/components/responses/Error'}
+  /v1/release-runs/{id}:
+    get:
+      operationId: getRelease
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        '200': {$ref: '#/components/responses/Run'}
+        '403': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /v1/release-runs/{id}/events:
+    get:
+      operationId: listReleaseEvents
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        '200':
+          description: Append-only audit events
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events: {type: array, items: {$ref: '#/components/schemas/AuditEvent'}}
+  '/v1/release-runs/{id}:pause':
+    post:
+      operationId: pauseRelease
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ActorID'
+      responses:
+        '200': {$ref: '#/components/responses/Run'}
+  '/v1/release-runs/{id}:resume':
+    post:
+      operationId: resumeRelease
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ActorID'
+      responses:
+        '200': {$ref: '#/components/responses/Run'}
+  '/v1/release-runs/{id}:cancel':
+    post:
+      operationId: cancelRelease
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ActorID'
+      responses:
+        '200': {$ref: '#/components/responses/Run'}
+  /v1/approvals:
+    get:
+      operationId: listPendingApprovals
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        '200':
+          description: Pending approvals for the authenticated tenant
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approvals]
+                properties:
+                  approvals: {type: array, items: {$ref: '#/components/schemas/ApprovalSummary'}}
+  '/v1/approvals/{id}:approve':
+    post:
+      operationId: approve
+      description: Identity and roles are revalidated server-side; request bodies cannot select an approver.
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ActorID'
+        - $ref: '#/components/parameters/ActorRoles'
+      responses:
+        '200': {$ref: '#/components/responses/Run'}
+        '403': {$ref: '#/components/responses/Error'}
+  '/v1/approvals/{id}:deny':
+    post:
+      operationId: deny
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ActorID'
+      responses:
+        '200': {$ref: '#/components/responses/Run'}
+  '/v1/approvals/{id}:revoke':
+    post:
+      operationId: revoke
+      description: Safely revokes only an approval that is still pending.
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ActorID'
+        - $ref: '#/components/parameters/ActorRoles'
+      responses:
+        '200': {$ref: '#/components/responses/Run'}
+        '403': {$ref: '#/components/responses/Error'}
+  '/v1/contracts:validate':
+    post:
+      operationId: validateContract
+      requestBody:
+        required: true
+        content:
+          application/yaml: {schema: {type: string}}
+          application/json: {schema: {type: object}}
+      responses:
+        '200':
+          description: Validated contract and canonical hash
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ContractValidation'}
+        '422': {$ref: '#/components/responses/Error'}
+  /v1/runners:
+    get:
+      operationId: listRunners
+      parameters:
+        - $ref: '#/components/parameters/TenantID'
+      responses:
+        '200':
+          description: Runner capacity projection
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runners]
+                properties:
+                  runners: {type: array, items: {$ref: '#/components/schemas/Runner'}}
+  '/v1/runners/{id}:freeze':
+    post:
+      operationId: freezeRunner
+      description: Fail closed by setting the runner's dispatch capacity to zero.
+      parameters:
+        - $ref: '#/components/parameters/ID'
+        - $ref: '#/components/parameters/TenantID'
+        - $ref: '#/components/parameters/ActorID'
+      responses:
+        '200':
+          description: Frozen runner
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Runner'}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: OIDC}
+  parameters:
+    ID: {name: id, in: path, required: true, schema: {type: string}}
+    TenantID: {name: X-Tenant-ID, in: header, required: true, schema: {type: string}}
+    ActorID: {name: X-Actor-ID, in: header, required: true, schema: {type: string}}
+    ActorRoles: {name: X-Actor-Roles, in: header, required: true, schema: {type: string}, description: Trusted roles injected after server-side identity verification.}
+  responses:
+    Plan:
+      description: Canonical release plan
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ReleasePlan'}
+    Run:
+      description: Durable release projection
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ReleaseRun'}
+    Error:
+      description: Typed error
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    AgentIdentity:
+      type: object
+      additionalProperties: false
+      required: [id, scopes]
+      properties:
+        id: {type: string}
+        scopes: {type: array, items: {type: string}}
+    Change:
+      type: object
+      additionalProperties: false
+      required: [service, desired_version, ci_success, dependencies_healthy]
+      properties:
+        service: {type: string}
+        desired_version: {type: string}
+        ci_success: {type: boolean}
+        dependencies_healthy: {type: boolean}
+        destructive_migration: {type: boolean}
+        risk: {type: string}
+    ReleaseIntent:
+      type: object
+      additionalProperties: false
+      required: [api_version, kind, request_id, release_version, tenant_id, environment, requested_by, delegated_agent, changes]
+      properties:
+        api_version: {type: string, const: execution.themisy.io/v1alpha1}
+        kind: {type: string, const: ReleaseIntent}
+        request_id: {type: string}
+        release_version: {type: string}
+        tenant_id: {type: string}
+        environment: {type: string, enum: [staging, production]}
+        region: {type: string}
+        cluster: {type: string}
+        requested_by: {type: string}
+        delegated_agent: {$ref: '#/components/schemas/AgentIdentity'}
+        changes: {type: array, minItems: 1, items: {$ref: '#/components/schemas/Change'}}
+    ReleasePlan:
+      type: object
+      required: [plan_id, release_version, environment, phases, hash, plan_hash, created_at, expires_at]
+      properties:
+        api_version: {type: string}
+        plan_id: {type: string}
+        release_version: {type: string}
+        environment: {type: string}
+        phases: {type: array, items: {type: object}}
+        hash: {type: string}
+        plan_hash: {type: string}
+        contract_hashes: {type: object, additionalProperties: {type: string}}
+        profile_hashes: {type: object, additionalProperties: {type: string}}
+        context_snapshot_ref: {type: string}
+        policy_hash: {type: string}
+        evidence_hash: {type: string}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+    ReleaseRun:
+      type: object
+      required: [id, request_id, release_version, environment, requested_by, plan, status, steps]
+      additionalProperties: true
+      properties:
+        id: {type: string}
+        request_id: {type: string}
+        tenant_id: {type: string}
+        release_version: {type: string}
+        environment: {type: string}
+        requested_by: {type: string}
+        status: {type: string}
+        plan: {$ref: '#/components/schemas/ReleasePlan'}
+        steps: {type: array, items: {type: object}}
+    ApprovalSummary:
+      type: object
+      required: [approval, run_id, service, tenant_id]
+      properties:
+        approval: {type: object}
+        run_id: {type: string}
+        service: {type: string}
+        tenant_id: {type: string}
+    Runner:
+      type: object
+      required: [id, tenant_id, group, status, capacity]
+      properties:
+        id: {type: string}
+        tenant_id: {type: string}
+        group: {type: string}
+        status: {type: string, enum: [UNKNOWN, READY, FROZEN]}
+        capacity: {type: integer, minimum: 0}
+        last_seen: {type: string, format: date-time}
+        frozen_by: {type: string}
+        frozen_at: {type: string, format: date-time}
+    ContractValidation:
+      type: object
+      required: [valid]
+      properties:
+        valid: {type: boolean}
+        name: {type: string}
+        content_hash: {type: string}
+    AuditEvent:
+      type: object
+      additionalProperties: true
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: {type: string}
+        reason_code: {type: string}

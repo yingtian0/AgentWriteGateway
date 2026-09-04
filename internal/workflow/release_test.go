@@ -9,6 +9,7 @@ import (
 	"themisy/internal/domain"
 	"themisy/internal/executor"
 	"themisy/internal/policy"
+	"themisy/internal/scheduler"
 	"themisy/internal/store"
 
 	"go.temporal.io/sdk/testsuite"
@@ -37,6 +38,34 @@ func TestReleaseWorkflowCompletesThroughActivities(t *testing.T) {
 	}
 	if persisted.Status != domain.RunSucceeded {
 		t.Fatalf("persisted status=%s", persisted.Status)
+	}
+}
+
+func TestReleaseWorkflowDoesNotDispatchAtZeroRunnerCapacity(t *testing.T) {
+	run, memory, exec := workflowFixture(t, false, nil)
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	activities := NewActivities(memory, policy.New(), exec)
+	activities.Capacity = func(ScheduleInput) scheduler.Capacity {
+		return scheduler.Capacity{RunnerAvailable: 0, AdapterRemaining: 10, QueueLimit: 10}
+	}
+	env.RegisterActivity(activities.PersistRun)
+	env.RegisterActivity(activities.EvaluateStep)
+	env.RegisterActivity(activities.Deploy)
+	env.RegisterActivity(activities.Verify)
+	env.RegisterActivity(activities.Rollback)
+	env.RegisterActivity(activities.AcquireSchedule)
+	env.RegisterActivity(activities.CompleteSchedule)
+	env.ExecuteWorkflow(ReleaseWorkflow, ReleaseInput{Run: run})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+	var result domain.ReleaseRun
+	if err := env.GetWorkflowResult(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != domain.RunBlocked || exec.DeployCalls(run.ID+"/staging/identity/sha-1") != 0 {
+		t.Fatalf("result=%#v deploys=%d", result, exec.DeployCalls(run.ID+"/staging/identity/sha-1"))
 	}
 }
 
@@ -129,6 +158,8 @@ func newWorkflowEnvironment(st store.DurableStore, exec executor.ReleaseExecutor
 	env.RegisterActivity(activities.Deploy)
 	env.RegisterActivity(activities.Verify)
 	env.RegisterActivity(activities.Rollback)
+	env.RegisterActivity(activities.AcquireSchedule)
+	env.RegisterActivity(activities.CompleteSchedule)
 	return env
 }
 

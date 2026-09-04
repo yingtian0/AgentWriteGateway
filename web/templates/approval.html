@@ -1,0 +1,23 @@
+{{define "approval"}}
+{{template "head" .}}
+<h1>Pending approvals</h1>
+<p>Identity and roles are revalidated by the server when an action is submitted.</p>
+{{if .Approvals}}
+<div class="approvals">
+{{range .Approvals}}
+  <article>
+    <h2>{{.Service}}</h2>
+    <p>Run <a href="/ui/release-runs/{{.RunID}}">{{.RunID}}</a></p>
+    <p>Required roles: {{range .Approval.RequiredRoles}}<code>{{.}}</code> {{end}}</p>
+    <p>Expires: {{.Approval.ExpiresAt}}</p>
+    <div class="actions">
+      <form method="post" action="/ui/approvals/{{.Approval.ID}}:approve"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button>Approve</button></form>
+      <form method="post" action="/ui/approvals/{{.Approval.ID}}:deny"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button class="secondary">Deny</button></form>
+      <form method="post" action="/ui/approvals/{{.Approval.ID}}:revoke"><input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button class="danger">Revoke</button></form>
+    </div>
+  </article>
+{{end}}
+</div>
+{{else}}<p>No pending approvals for this tenant.</p>{{end}}
+{{template "foot" .}}
+{{end}}

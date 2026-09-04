@@ -20,6 +20,8 @@ func NewWorker(temporalClient client.Client, taskQueue string, activities *Activ
 	result.RegisterActivity(activities.Deploy)
 	result.RegisterActivity(activities.Verify)
 	result.RegisterActivity(activities.Rollback)
+	result.RegisterActivity(activities.AcquireSchedule)
+	result.RegisterActivity(activities.CompleteSchedule)
 	return result
 }
 

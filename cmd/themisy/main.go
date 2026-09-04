@@ -14,10 +14,13 @@ import (
 	"themisy/internal/config"
 	"themisy/internal/contract"
 	"themisy/internal/executor"
+	"themisy/internal/mcp"
 	"themisy/internal/planner"
 	"themisy/internal/policy"
 	"themisy/internal/profile"
+	"themisy/internal/scheduler"
 	postgresstore "themisy/internal/store/postgres"
+	"themisy/internal/ui"
 	workflowcore "themisy/internal/workflow"
 
 	"go.temporal.io/sdk/client"
@@ -90,6 +93,9 @@ func main() {
 	releases := application.NewReleases(releasePlanner, persistentStore, controller)
 	go releases.RunWorkflowRecovery(ctx, 5*time.Second, func(err error) { logger.Error("recover workflow outbox", "error", err) })
 	activities := workflowcore.NewActivities(persistentStore, policyEngine, executor.NewMock(nil))
+	activities.Capacity = func(input workflowcore.ScheduleInput) scheduler.Capacity {
+		return scheduler.Capacity{RunnerAvailable: releases.RunnerCapacity(input.Step.Tenant, input.Step.RunnerGroup), AdapterRemaining: 20, QueueLimit: 100}
+	}
 	if settings.Mode == "worker" {
 		runWorker(logger, temporalClient, settings.Temporal.TaskQueue, activities)
 		return
@@ -102,7 +108,16 @@ func main() {
 		}
 		defer worker.Stop()
 	}
-	server := &http.Server{Addr: settings.HTTP.Address, Handler: api.New(releases, logger).Handler(), ReadHeaderTimeout: 5 * time.Second}
+	uiServer, err := ui.New(releases, ui.HeaderIdentityVerifier{})
+	if err != nil {
+		logger.Error("initialize status UI", "error", err)
+		os.Exit(1)
+	}
+	routes := http.NewServeMux()
+	routes.Handle("/mcp", mcp.NewHTTP(releases, mcp.HeaderPrincipalResolver{}, nil))
+	routes.Handle("/ui/", uiServer.Handler())
+	routes.Handle("/", api.New(releases, logger).Handler())
+	server := &http.Server{Addr: settings.HTTP.Address, Handler: routes, ReadHeaderTimeout: 5 * time.Second}
 	logger.Info("Themisy control plane listening", "address", settings.HTTP.Address, "services", len(contracts), "workflow", "temporal", "store", "postgres")
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("server stopped", "error", err)

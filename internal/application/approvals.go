@@ -41,10 +41,68 @@ func (r *Releases) DecideApproval(ctx context.Context, runID, approvalID, actor 
 	if approve && !containsAll(roles, target.RequiredRoles) {
 		return nil, fmt.Errorf("%w: approver lacks required roles %v", ErrApproval, target.RequiredRoles)
 	}
-	if err := r.workflows.SignalApproval(ctx, run.WorkflowID, workflowcore.ApprovalSignal{ApprovalID: approvalID, Actor: actor, Roles: roles, Approve: approve}); err != nil {
+	action := "deny"
+	if approve {
+		action = "approve"
+	}
+	if err := r.workflows.SignalApproval(ctx, run.WorkflowID, workflowcore.ApprovalSignal{ApprovalID: approvalID, Actor: actor, Roles: roles, Approve: approve, Action: action}); err != nil {
 		return nil, err
 	}
 	return r.store.GetRun(runID)
+}
+
+func (r *Releases) DecideApprovalForTenant(ctx context.Context, tenant, runID, approvalID, actor string, roles []string, approve bool) (*domain.ReleaseRun, error) {
+	if _, err := r.GetForTenant(tenant, runID); err != nil {
+		return nil, err
+	}
+	return r.DecideApproval(ctx, runID, approvalID, actor, roles, approve)
+}
+
+func (r *Releases) RevokeApprovalForTenant(ctx context.Context, tenant, runID, approvalID, actor string, roles []string) (*domain.ReleaseRun, error) {
+	if actor == "" {
+		return nil, fmt.Errorf("%w: approval actor is required", ErrApproval)
+	}
+	run, err := r.GetForTenant(tenant, runID)
+	if err != nil {
+		return nil, err
+	}
+	var target *domain.Approval
+	for index := range run.Steps {
+		if run.Steps[index].Approval != nil && run.Steps[index].Approval.ID == approvalID {
+			target = run.Steps[index].Approval
+			break
+		}
+	}
+	if target == nil || target.Status != domain.ApprovalPending {
+		return nil, fmt.Errorf("%w: only a pending approval can be revoked safely", ErrApproval)
+	}
+	if !containsAll(roles, target.RequiredRoles) {
+		return nil, fmt.Errorf("%w: revoker lacks required roles %v", ErrApproval, target.RequiredRoles)
+	}
+	if err := r.workflows.SignalApproval(ctx, run.WorkflowID, workflowcore.ApprovalSignal{ApprovalID: approvalID, Actor: actor, Roles: roles, Action: "revoke"}); err != nil {
+		return nil, err
+	}
+	return r.store.GetRun(runID)
+}
+
+func (r *Releases) ListPendingApprovals(tenant string) ([]domain.ApprovalSummary, error) {
+	runs, err := r.store.ListRuns()
+	if err != nil {
+		return nil, err
+	}
+	tenant = normalized(tenant, "default")
+	result := make([]domain.ApprovalSummary, 0)
+	for _, run := range runs {
+		if normalized(run.TenantID, "default") != tenant {
+			continue
+		}
+		for _, step := range run.Steps {
+			if step.Approval != nil && step.Approval.Status == domain.ApprovalPending {
+				result = append(result, domain.ApprovalSummary{Approval: *step.Approval, RunID: run.ID, Service: step.Service, TenantID: tenant})
+			}
+		}
+	}
+	return result, nil
 }
 
 func containsAll(actual, required []string) bool {
@@ -70,6 +128,13 @@ func (r *Releases) Resume(ctx context.Context, runID, actor string) (*domain.Rel
 	return r.control(ctx, runID, actor, "resume")
 }
 
+func (r *Releases) ControlForTenant(ctx context.Context, tenant, runID, actor, action string) (*domain.ReleaseRun, error) {
+	if _, err := r.GetForTenant(tenant, runID); err != nil {
+		return nil, err
+	}
+	return r.control(ctx, runID, actor, action)
+}
+
 func (r *Releases) control(ctx context.Context, runID, actor, action string) (*domain.ReleaseRun, error) {
 	if actor == "" {
 		return nil, fmt.Errorf("actor is required")
@@ -86,6 +151,8 @@ func (r *Releases) control(ctx context.Context, runID, actor, action string) (*d
 		err = r.workflows.Pause(ctx, run.WorkflowID, signal)
 	case "resume":
 		err = r.workflows.Resume(ctx, run.WorkflowID, signal)
+	default:
+		return nil, fmt.Errorf("unsupported release control action %q", action)
 	}
 	if err != nil {
 		return nil, err

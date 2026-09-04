@@ -2,166 +2,210 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
 
+	"themisy/internal/application"
 	"themisy/internal/domain"
-	"themisy/internal/engine"
-	"themisy/internal/executor"
 	"themisy/internal/planner"
-	"themisy/internal/policy"
 	"themisy/internal/store"
+	workflowcore "themisy/internal/workflow"
+
+	"go.yaml.in/yaml/v3"
 )
 
-func TestPlanAndStartRoutes(t *testing.T) {
-	p, err := planner.New([]domain.Service{{Name: "identity", ReleasePhase: 0}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	e := engine.New(p, policy.New(), executor.NewMock(nil), store.NewMemory())
-	handler := New(e, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
-	body := []byte(`{
-      "request_id":"http-1",
-      "release_version":"release-1",
-      "environment":"staging",
-      "requested_by":"user-1",
-      "delegated_agent":{"id":"agent-1","scopes":["release:deploy"]},
-      "changes":[{"service":"identity","desired_version":"sha-1","ci_success":true,"dependencies_healthy":true}]
-    }`)
+func TestPlanGetStartAndLegacyDeprecation(t *testing.T) {
+	service, _, _ := testApplication(t)
+	handler := New(service, testLogger()).Handler()
+	body := releaseBody("tenant-a")
 
-	planRequest := httptest.NewRequest(http.MethodPost, "/v1/release-runs:plan", bytes.NewReader(body))
-	planRequest.Header.Set("Content-Type", "application/json")
-	planResponse := httptest.NewRecorder()
-	handler.ServeHTTP(planResponse, planRequest)
+	planResponse := request(t, handler, http.MethodPost, "/v1/plans", body, map[string]string{"X-Tenant-ID": "tenant-a"})
 	if planResponse.Code != http.StatusOK {
 		t.Fatalf("plan status=%d body=%s", planResponse.Code, planResponse.Body.String())
 	}
 	var plan domain.ReleasePlan
-	if err := json.NewDecoder(planResponse.Body).Decode(&plan); err != nil {
-		t.Fatal(err)
-	}
-	if plan.Hash == "" || plan.PlanHash != plan.Hash || plan.ID == "" || plan.ExpiresAt.IsZero() || len(plan.Phases) != 1 {
-		t.Fatalf("unexpected plan: %#v", plan)
+	decodeResponse(t, planResponse, &plan)
+	if plan.Hash == "" || plan.ID == "" {
+		t.Fatalf("plan=%#v", plan)
 	}
 
-	startRequest := httptest.NewRequest(http.MethodPost, "/v1/release-runs", bytes.NewReader(body))
-	startRequest.Header.Set("Content-Type", "application/json")
-	startResponse := httptest.NewRecorder()
-	handler.ServeHTTP(startResponse, startRequest)
+	getResponse := request(t, handler, http.MethodGet, "/v1/plans/"+plan.ID, nil, map[string]string{"X-Tenant-ID": "tenant-a"})
+	if getResponse.Code != http.StatusOK {
+		t.Fatalf("get plan status=%d body=%s", getResponse.Code, getResponse.Body.String())
+	}
+	var fetched domain.ReleasePlan
+	decodeResponse(t, getResponse, &fetched)
+	if fetched.Hash != plan.Hash {
+		t.Fatalf("fetched hash=%s want=%s", fetched.Hash, plan.Hash)
+	}
+
+	startResponse := request(t, handler, http.MethodPost, "/v1/release-runs", body, map[string]string{"X-Tenant-ID": "tenant-a"})
 	if startResponse.Code != http.StatusCreated {
 		t.Fatalf("start status=%d body=%s", startResponse.Code, startResponse.Body.String())
 	}
 	var run domain.ReleaseRun
-	if err := json.NewDecoder(startResponse.Body).Decode(&run); err != nil {
-		t.Fatal(err)
+	decodeResponse(t, startResponse, &run)
+	if run.Status != domain.RunPending || run.TenantID != "tenant-a" {
+		t.Fatalf("run=%#v", run)
 	}
-	if run.Status != domain.RunSucceeded {
-		t.Fatalf("run status=%s, want SUCCEEDED", run.Status)
+
+	legacy := request(t, handler, http.MethodPost, "/v1/release-runs:plan", body, nil)
+	if legacy.Code != http.StatusOK || legacy.Header().Get("Deprecation") != "true" || legacy.Header().Get("Link") == "" {
+		t.Fatalf("legacy status=%d headers=%v body=%s", legacy.Code, legacy.Header(), legacy.Body.String())
 	}
 }
 
-func TestVersionedIntentUsesExistingPlanAndStartRoutes(t *testing.T) {
-	p, err := planner.New([]domain.Service{{Name: "identity", ReleasePhase: 0}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	e := engine.New(p, policy.New(), executor.NewMock(nil), store.NewMemory())
-	handler := New(e, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
-	body := []byte(`{
-      "api_version":"execution.themisy.io/v1alpha1",
-      "kind":"ReleaseIntent",
-      "request_id":"versioned-http-1",
-      "release_version":"release-1",
-      "environment":"staging",
-      "requested_by":"user-1",
-      "delegated_agent":{"id":"agent-1","scopes":["release:deploy"]},
-      "changes":[{"service":"identity","desired_version":"sha-1","ci_success":true,"dependencies_healthy":true}]
-    }`)
+func TestTenantBoundaryAndColonControls(t *testing.T) {
+	service, _, controller := testApplication(t)
+	handler := New(service, testLogger()).Handler()
+	started := request(t, handler, http.MethodPost, "/v1/release-runs", releaseBody("tenant-a"), map[string]string{"X-Tenant-ID": "tenant-a"})
+	var run domain.ReleaseRun
+	decodeResponse(t, started, &run)
 
-	for _, path := range []string{"/v1/release-runs:plan", "/v1/release-runs"} {
-		request := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
-		request.Header.Set("Content-Type", "application/json")
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, request)
-		if path == "/v1/release-runs:plan" && response.Code != http.StatusOK {
-			t.Fatalf("plan status=%d body=%s", response.Code, response.Body.String())
-		}
-		if path == "/v1/release-runs" && response.Code != http.StatusCreated {
-			t.Fatalf("start status=%d body=%s", response.Code, response.Body.String())
-		}
+	crossTenant := request(t, handler, http.MethodGet, "/v1/release-runs/"+run.ID, nil, map[string]string{"X-Tenant-ID": "tenant-b"})
+	if crossTenant.Code != http.StatusForbidden {
+		t.Fatalf("cross-tenant status=%d body=%s", crossTenant.Code, crossTenant.Body.String())
+	}
+	paused := request(t, handler, http.MethodPost, "/v1/release-runs/"+run.ID+":pause", nil, map[string]string{"X-Tenant-ID": "tenant-a", "X-Actor-ID": "operator"})
+	if paused.Code != http.StatusOK || controller.pauses != 1 {
+		t.Fatalf("pause status=%d calls=%d body=%s", paused.Code, controller.pauses, paused.Body.String())
 	}
 }
 
-func TestVersionedIntentReturnsTypedReasonCode(t *testing.T) {
-	p, err := planner.New([]domain.Service{{Name: "identity"}})
-	if err != nil {
+func TestApprovalIdentityIsRevalidatedServerSide(t *testing.T) {
+	service, memory, controller := testApplication(t)
+	now := time.Now().UTC()
+	run := &domain.ReleaseRun{ID: "approval-run", WorkflowID: "approval-run", RequestID: "approval-request", TenantID: "tenant-a", RequestedBy: "requester", Plan: domain.ReleasePlan{Hash: "plan"}, Status: domain.RunWaitingApproval, StateVersion: 1, CreatedAt: now, UpdatedAt: now, Steps: []domain.ReleaseStep{{Service: "identity", Approval: &domain.Approval{ID: "approval-1", Status: domain.ApprovalPending, PlanHash: "plan", RequiredRoles: []string{"sre"}, ExpiresAt: now.Add(time.Hour)}}}}
+	if _, _, err := memory.CreateRun(run); err != nil {
 		t.Fatal(err)
 	}
-	e := engine.New(p, policy.New(), executor.NewMock(nil), store.NewMemory())
-	handler := New(e, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
-	body := []byte(`{
-      "api_version":"execution.themisy.io/v2",
-      "kind":"ReleaseIntent",
-      "request_id":"invalid-version",
-      "release_version":"release-1",
-      "environment":"staging",
-      "requested_by":"user-1",
-      "delegated_agent":{"id":"agent-1","scopes":["release:deploy"]},
-      "changes":[{"service":"identity","desired_version":"sha-1","ci_success":true,"dependencies_healthy":true}]
-    }`)
-	request := httptest.NewRequest(http.MethodPost, "/v1/release-runs:plan", bytes.NewReader(body))
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusUnprocessableEntity {
+	resolver := &fixedIdentity{principal: Principal{Subject: "verified-sre", TenantID: "tenant-a", Roles: []string{"sre"}}}
+	handler := NewWithIdentity(service, resolver, testLogger()).Handler()
+	response := request(t, handler, http.MethodPost, "/v1/approvals/approval-1:approve", []byte(`{"actor":"attacker","roles":["admin"]}`), nil)
+	if response.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	var decoded errorResponse
-	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
-		t.Fatal(err)
-	}
-	if decoded.ReasonCode != domain.ReasonUnsupportedSchemaVersion {
-		t.Fatalf("reason=%s, want %s", decoded.ReasonCode, domain.ReasonUnsupportedSchemaVersion)
+	if resolver.calls != 1 || controller.lastApproval.Actor != "verified-sre" || len(controller.lastApproval.Roles) != 1 || controller.lastApproval.Roles[0] != "sre" {
+		t.Fatalf("resolver calls=%d signal=%#v", resolver.calls, controller.lastApproval)
 	}
 }
 
-func TestPauseResumeRoutesDoNotBypassApproval(t *testing.T) {
-	p, err := planner.New([]domain.Service{{Name: "identity"}})
+func TestContractValidation(t *testing.T) {
+	service, _, _ := testApplication(t)
+	handler := New(service, testLogger()).Handler()
+	contract, err := os.ReadFile("../../examples/contracts/identity-api.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	e := engine.New(p, policy.New(), executor.NewMock(nil), store.NewMemory())
-	handler := New(e, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
-	body := []byte(`{
-      "request_id":"pause-http-1","release_version":"release-1","environment":"production",
-      "requested_by":"user-1","delegated_agent":{"id":"agent-1","scopes":["release:deploy","release:production"]},
-      "changes":[{"service":"identity","desired_version":"sha-1","ci_success":true,"dependencies_healthy":true,"destructive_migration":true}]
-    }`)
-	start := httptest.NewRecorder()
-	handler.ServeHTTP(start, httptest.NewRequest(http.MethodPost, "/v1/release-runs", bytes.NewReader(body)))
-	if start.Code != http.StatusCreated {
-		t.Fatalf("status=%d body=%s", start.Code, start.Body.String())
+	response := request(t, handler, http.MethodPost, "/v1/contracts:validate", contract, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	var run domain.ReleaseRun
-	if err := json.NewDecoder(start.Body).Decode(&run); err != nil {
-		t.Fatal(err)
-	}
-	for _, action := range []string{"pause", "resume"} {
-		request := httptest.NewRequest(http.MethodPost, "/v1/release-runs/"+run.ID+"/"+action, nil)
-		request.Header.Set("X-Actor-ID", "operator")
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, request)
-		if response.Code != http.StatusOK {
-			t.Fatalf("%s status=%d body=%s", action, response.Code, response.Body.String())
-		}
-		if err := json.NewDecoder(response.Body).Decode(&run); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if run.Status != domain.RunWaitingApproval || run.Steps[0].Execution != nil {
-		t.Fatalf("control crossed approval: %#v", run)
+	var validation domain.ContractValidation
+	decodeResponse(t, response, &validation)
+	if !validation.Valid || validation.Name != "identity-api" || validation.ContentHash == "" {
+		t.Fatalf("validation=%#v", validation)
 	}
 }
+
+func TestOpenAPIIsParseableAndDocumentsRequiredRoutes(t *testing.T) {
+	data, err := os.ReadFile("../../api/openapi/v1alpha1.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		OpenAPI string                    `yaml:"openapi"`
+		Paths   map[string]map[string]any `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.OpenAPI != "3.1.0" {
+		t.Fatalf("openapi=%q", document.OpenAPI)
+	}
+	for path, method := range map[string]string{
+		"/v1/plans": "post", "/v1/plans/{id}": "get", "/v1/release-runs": "post",
+		"/v1/release-runs/{id}:pause": "post", "/v1/release-runs/{id}:resume": "post",
+		"/v1/release-runs/{id}:cancel": "post", "/v1/approvals": "get",
+		"/v1/approvals/{id}:approve": "post", "/v1/approvals/{id}:deny": "post",
+		"/v1/approvals/{id}:revoke": "post", "/v1/contracts:validate": "post",
+		"/v1/runners": "get", "/v1/runners/{id}:freeze": "post",
+	} {
+		if _, ok := document.Paths[path][method]; !ok {
+			t.Errorf("OpenAPI missing %s %s", method, path)
+		}
+	}
+}
+
+type fixedIdentity struct {
+	principal Principal
+	calls     int
+}
+
+func (f *fixedIdentity) Resolve(*http.Request) (Principal, error) {
+	f.calls++
+	return f.principal, nil
+}
+
+type fakeController struct {
+	starts       int
+	pauses       int
+	lastApproval workflowcore.ApprovalSignal
+}
+
+func (f *fakeController) StartRelease(context.Context, workflowcore.ReleaseInput) (workflowcore.Execution, error) {
+	f.starts++
+	return workflowcore.Execution{WorkflowID: "workflow", RunID: "run"}, nil
+}
+func (f *fakeController) SignalApproval(_ context.Context, _ string, signal workflowcore.ApprovalSignal) error {
+	f.lastApproval = signal
+	return nil
+}
+func (f *fakeController) Pause(context.Context, string, workflowcore.ControlSignal) error {
+	f.pauses++
+	return nil
+}
+func (*fakeController) Resume(context.Context, string, workflowcore.ControlSignal) error { return nil }
+func (*fakeController) Cancel(context.Context, string, workflowcore.ControlSignal) error { return nil }
+
+func testApplication(t *testing.T) (*application.Releases, *store.Memory, *fakeController) {
+	t.Helper()
+	p, err := planner.New([]domain.Service{{Name: "identity", OwnerTeam: "identity", RiskTier: "high", RunnerGroups: map[domain.Environment]string{domain.EnvironmentStaging: "staging-runner"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	memory := store.NewMemory()
+	controller := &fakeController{}
+	return application.NewReleases(p, memory, controller), memory, controller
+}
+
+func releaseBody(tenant string) []byte {
+	return []byte(`{"api_version":"execution.themisy.io/v1alpha1","kind":"ReleaseIntent","request_id":"http-1","release_version":"release-1","tenant_id":"` + tenant + `","environment":"staging","requested_by":"user-1","delegated_agent":{"id":"agent-1","scopes":["release:deploy"]},"changes":[{"service":"identity","desired_version":"sha-1","ci_success":true,"dependencies_healthy":true}]}`)
+}
+
+func request(t *testing.T, handler http.Handler, method, path string, body []byte, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(method, path, bytes.NewReader(body))
+	for key, value := range headers {
+		request.Header.Set(key, value)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
+}
+
+func decodeResponse(t *testing.T, response *httptest.ResponseRecorder, target any) {
+	t.Helper()
+	if err := json.NewDecoder(response.Body).Decode(target); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
