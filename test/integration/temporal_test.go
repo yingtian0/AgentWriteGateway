@@ -17,10 +17,12 @@ import (
 
 	"themisy/internal/api"
 	"themisy/internal/application"
+	"themisy/internal/contract"
 	"themisy/internal/domain"
 	"themisy/internal/executor"
 	"themisy/internal/planner"
 	"themisy/internal/policy"
+	"themisy/internal/profile"
 	postgresstore "themisy/internal/store/postgres"
 	workflowcore "themisy/internal/workflow"
 
@@ -65,14 +67,28 @@ func TestTemporalAPIWorkerRestartApprovalCancelAndReplay(t *testing.T) {
 	if err := firstWorker.Start(); err != nil {
 		t.Fatal(err)
 	}
-	p, err := planner.New([]domain.Service{{Name: "identity"}})
+	contracts, err := contract.LoadDir("../../examples/contracts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiles, err := profile.LoadDir("../../examples/profiles")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Keep the real verification path in this integration test without making
+	// CI wait for the production observation windows declared by the examples.
+	for index := range profiles {
+		profiles[index].Spec.Verification.ObservationWindow = "1ms"
+		profiles[index].ContentHash = ""
+	}
+	p, err := planner.NewFromContracts(contracts, profiles, planner.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	releases := application.NewReleases(p, persistent, workflowcore.NewController(temporalClient, queue))
 	handler := api.New(releases, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
 	requestID := fmt.Sprintf("temporal-api-%d", time.Now().UnixNano())
-	body := []byte(fmt.Sprintf(`{"request_id":%q,"release_version":"release-1","environment":"staging","requested_by":"user-1","delegated_agent":{"id":"agent-1","scopes":["release:deploy"]},"changes":[{"service":"identity","desired_version":"sha-1","ci_success":true,"dependencies_healthy":true}]}`, requestID))
+	body := []byte(fmt.Sprintf(`{"request_id":%q,"release_version":"release-1","environment":"staging","requested_by":"user-1","delegated_agent":{"id":"agent-1","scopes":["release:deploy"]},"changes":[{"service":"identity-api","desired_version":"sha-1","ci_success":true,"dependencies_healthy":true}]}`, requestID))
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/release-runs", bytes.NewReader(body)))
 	if response.Code != http.StatusCreated {
@@ -93,7 +109,7 @@ func TestTemporalAPIWorkerRestartApprovalCancelAndReplay(t *testing.T) {
 		return nil
 	})
 	firstWorker.Stop()
-	destructive := domain.ReleaseRequest{RequestID: fmt.Sprintf("restart-approval-%d", time.Now().UnixNano()), ReleaseVersion: "release-1", Environment: domain.EnvironmentProduction, RequestedBy: "requester", Agent: domain.AgentIdentity{ID: "agent", Scopes: []string{"release:deploy", "release:production"}}, Changes: []domain.Change{{Service: "identity", DesiredVersion: "sha-2", CISuccess: true, DependenciesHealthy: true, DestructiveMigration: true}}}
+	destructive := domain.ReleaseRequest{RequestID: fmt.Sprintf("restart-approval-%d", time.Now().UnixNano()), ReleaseVersion: "release-1", Environment: domain.EnvironmentProduction, RequestedBy: "requester", Agent: domain.AgentIdentity{ID: "agent", Scopes: []string{"release:deploy", "release:production"}}, Changes: []domain.Change{{Service: "identity-api", DesiredVersion: "sha-2", CISuccess: true, DependenciesHealthy: true, DestructiveMigration: true}}}
 	secondWorker := workflowcore.NewWorker(temporalClient, queue, activities)
 	if err := secondWorker.Start(); err != nil {
 		t.Fatal(err)
