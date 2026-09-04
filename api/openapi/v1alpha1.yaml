@@ -249,6 +249,10 @@ components:
         region: {type: string}
         cluster: {type: string}
         requested_by: {type: string}
+        subject_type: {type: string, enum: [user, ci], description: Subject type carried into the signed Action Grant.}
+        subject_issuer: {type: string, format: uri}
+        user_identity_proof: {type: string, description: Short-lived OIDC proof independently verified by the Runner.}
+        delegation_ref: {type: string, description: Reference to a Runner-verifiable delegation.}
         delegated_agent: {$ref: '#/components/schemas/AgentIdentity'}
         changes: {type: array, minItems: 1, items: {$ref: '#/components/schemas/Change'}}
     ReleasePlan:

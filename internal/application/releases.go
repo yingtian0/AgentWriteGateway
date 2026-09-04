@@ -109,7 +109,7 @@ func (r *Releases) start(ctx context.Context, request domain.ReleaseRequest, pla
 	}
 	now := r.now().UTC()
 	runID := newID("run")
-	run := &domain.ReleaseRun{ID: runID, WorkflowID: runID, RequestID: request.RequestID, ReleaseVersion: request.ReleaseVersion, TenantID: normalized(request.TenantID, "default"), Environment: request.Environment, Region: normalized(request.Region, "global"), Cluster: request.Cluster, RequestedBy: request.RequestedBy, Agent: request.Agent, Plan: plan, Status: domain.RunPending, StateVersion: 1, CreatedAt: now, UpdatedAt: now}
+	run := &domain.ReleaseRun{ID: runID, WorkflowID: runID, RequestID: request.RequestID, ReleaseVersion: request.ReleaseVersion, TenantID: normalized(request.TenantID, "default"), Environment: request.Environment, Region: normalized(request.Region, "global"), Cluster: request.Cluster, RequestedBy: request.RequestedBy, SubjectType: request.SubjectType, SubjectIssuer: request.SubjectIssuer, UserIdentityProof: request.UserIdentityProof, DelegationRef: request.DelegationRef, Agent: request.Agent, Plan: plan, Status: domain.RunPending, StateVersion: 1, CreatedAt: now, UpdatedAt: now}
 	changes := make(map[string]domain.Change, len(request.Changes))
 	for _, change := range request.Changes {
 		changes[change.Service] = change
