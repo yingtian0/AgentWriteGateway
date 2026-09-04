@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 func TestContractValidInvalidMatrix(t *testing.T) {

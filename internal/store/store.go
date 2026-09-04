@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/pkg/protocol"
+	"themisy/internal/domain"
+	"themisy/pkg/protocol"
 )
 
 var (

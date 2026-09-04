@@ -3,8 +3,8 @@ package application
 import (
 	"context"
 
-	"agentwritegateway/internal/domain"
-	workflowcore "agentwritegateway/internal/workflow"
+	"themisy/internal/domain"
+	workflowcore "themisy/internal/workflow"
 )
 
 type ReleaseService interface {

@@ -14,7 +14,7 @@ Using a single mutable row model as the authority for every concern would allow 
 PostgreSQL is the standard relational store for durable application state and query projections. Versioned migrations define contracts, profiles, plans, run/step indexes, policy decisions, approvals, grants, executions, evidence metadata, audit events, idempotency records, leases, and transactional outbox records as each packet introduces them.
 
 Ordered migrations use `golang-migrate` v4 with its pgx/v5 driver and an embedded
-`io/fs` source. This keeps the up/down SQL usable by both the gateway and the
+`io/fs` source. This keeps the up/down SQL usable by both the control plane and the
 standalone migration CLI while sharing the same pgx major version as the store.
 
 Authority is deliberately split:

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 func journalAudit(id, correlationID, action, result string, at time.Time, details map[string]any) domain.AuditEvent {

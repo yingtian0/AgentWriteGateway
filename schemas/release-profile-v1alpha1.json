@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentwritegateway.io/schemas/release-profile-v1alpha1.json",
-  "title": "Agent Write Gateway Release Profile v1alpha1",
+  "$id": "https://themisy.io/schemas/release-profile-v1alpha1.json",
+  "title": "Themisy Release Profile v1alpha1",
   "type": "object",
   "additionalProperties": false,
   "required": ["apiVersion", "kind", "metadata", "spec"],
   "properties": {
-    "apiVersion": {"const": "execution.agentwritegateway.io/v1alpha1"},
+    "apiVersion": {"const": "execution.themisy.io/v1alpha1"},
     "kind": {"const": "ReleaseProfile"},
     "metadata": {
       "type": "object",

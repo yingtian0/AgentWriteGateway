@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/pkg/adapter"
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/adapter"
+	"themisy/pkg/credentials"
 )
 
 func TestDeployUsesConfiguredWorkflowAndAllowListedInputs(t *testing.T) {
@@ -39,7 +39,7 @@ func TestDeployUsesConfiguredWorkflowAndAllowListedInputs(t *testing.T) {
 	if err := json.Unmarshal(recorded.body, &body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Inputs) != 4 || body.Inputs["awg_artifact_digest"] != request.ArtifactDigest || body.Inputs["awg_idempotency_key"] != adapter.CorrelationID(request.IdempotencyKey) {
+	if len(body.Inputs) != 4 || body.Inputs["themisy_artifact_digest"] != request.ArtifactDigest || body.Inputs["themisy_idempotency_key"] != adapter.CorrelationID(request.IdempotencyKey) {
 		t.Fatalf("body=%#v", body)
 	}
 	if strings.Contains(string(recorded.body), "command") || strings.Contains(string(recorded.body), "url") {
@@ -60,7 +60,7 @@ func TestTimeoutIsUnknownAndNeverBlindlyRetried(t *testing.T) {
 func TestReconcileFindsCorrelationRunName(t *testing.T) {
 	now := testNow()
 	correlation := adapter.CorrelationID(testDeployRequest().IdempotencyKey)
-	payload := `{"workflow_runs":[{"id":456,"display_title":"awg:` + correlation + `","status":"completed","conclusion":"success","created_at":"2026-08-29T00:00:00Z","updated_at":"2026-08-29T00:01:00Z"}]}`
+	payload := `{"workflow_runs":[{"id":456,"display_title":"themisy:` + correlation + `","status":"completed","conclusion":"success","created_at":"2026-08-29T00:00:00Z","updated_at":"2026-08-29T00:01:00Z"}]}`
 	transport := &recordingTransport{responses: []*http.Response{{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(payload)), Header: make(http.Header)}}}
 	service := newTestAdapter(t, &http.Client{Transport: transport}, now)
 	result, err := service.Reconcile(context.Background(), adapter.ReconcileRequest{IdempotencyKey: testDeployRequest().IdempotencyKey, DispatchedAt: now.Add(-time.Minute)}, testCredential(now))
@@ -86,7 +86,7 @@ func TestGitHubActionsAdapterPassesPublicConformanceSuite(t *testing.T) {
 	correlation := adapter.CorrelationID(request.IdempotencyKey)
 	transport := &recordingTransport{responses: []*http.Response{
 		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"workflow_run_id":123}`)), Header: make(http.Header)},
-		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"workflow_runs":[{"id":123,"display_title":"awg:` + correlation + `","status":"completed","conclusion":"success","created_at":"2026-08-29T00:00:00Z","updated_at":"2026-08-29T00:01:00Z"}]}`)), Header: make(http.Header)},
+		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"workflow_runs":[{"id":123,"display_title":"themisy:` + correlation + `","status":"completed","conclusion":"success","created_at":"2026-08-29T00:00:00Z","updated_at":"2026-08-29T00:01:00Z"}]}`)), Header: make(http.Header)},
 		{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"workflow_run_id":789}`)), Header: make(http.Header)},
 	}}
 	service := newTestAdapter(t, &http.Client{Transport: transport}, now)

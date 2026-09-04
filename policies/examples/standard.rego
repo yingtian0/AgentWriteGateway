@@ -1,4 +1,4 @@
-package agentwritegateway.authorization
+package themisy.authorization
 
 import rego.v1
 

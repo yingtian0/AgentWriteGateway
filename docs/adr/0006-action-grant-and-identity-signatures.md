@@ -9,7 +9,7 @@ Action Grants cross the Control Plane/Runner trust boundary and bind every autho
 
 ## Decision
 
-Action Grants use the versioned `awg.protocol/v1alpha1` JSON structure and a detached Ed25519 signature over its canonical Go-struct JSON representation. The signature object is excluded from the signed value; every other field is included. The algorithm and key ID are explicit, and the Runner accepts only its configured issuer, audience, algorithm, and trust key. Unknown JSON fields and unknown protocol versions fail closed.
+Action Grants use the versioned `themisy.protocol/v1alpha1` JSON structure and a detached Ed25519 signature over its canonical Go-struct JSON representation. The signature object is excluded from the signed value; every other field is included. The algorithm and key ID are explicit, and the Runner accepts only its configured issuer, audience, algorithm, and trust key. Unknown JSON fields and unknown protocol versions fail closed.
 
 Policy Bundles use the same Ed25519 signature boundary. Their content hash is calculated over normalized metadata and modules, then the hash and all metadata are signed. Modules are sorted by layer and name. The production signer is a KMS/HSM interface that receives canonical bytes and returns a signature. An ephemeral self-signed Ed25519 implementation exists only behind an explicitly named development constructor and is never a production default.
 

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/credentials"
 )
 
 // ConformanceInput is intended for an explicitly isolated staging account.

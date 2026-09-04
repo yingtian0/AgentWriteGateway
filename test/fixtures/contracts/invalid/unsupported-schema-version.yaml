@@ -1,4 +1,4 @@
-apiVersion: execution.agentwritegateway.io/v2
+apiVersion: execution.themisy.io/v2
 kind: ServiceContract
 metadata:
   name: unsupported-version

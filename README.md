@@ -1,8 +1,8 @@
-# Agent Write Gateway
+# Themisy
 
 > **Prototype / not production ready.** The current implementation has a PostgreSQL/Temporal durable core, a fail-closed Runner authorization boundary, a typed GitHub Actions adapter, and Datadog evidence classification. It still lacks production KMS/JWKS discovery, Runner transport integration, and a completed dedicated-staging deploy/rollback exercise. It must not be connected to production credentials or production write APIs.
 
-Agent Write Gateway is an open-source Change Execution Control Plane for planning, authorizing, executing, verifying, stopping, and auditing changes requested by people, CI, CLIs, or AI agents through the same deterministic safety boundary.
+Themisy is an open-source Agent Operations Control Layer for planning, authorizing, executing, verifying, stopping, and auditing changes requested by people, CI, CLIs, or AI agents through the same deterministic safety boundary.
 
 The current repository is an executable prototype. It performs no external writes and demonstrates safety properties with versioned Service Contracts and Release Profiles, PostgreSQL records/read projections, Temporal workflow history, and a mock deploy/verify/rollback adapter. An in-memory store and the original synchronous Engine remain only as test and migration compatibility paths. The original 20-service JSON catalog remains available through an explicit compatibility adapter.
 
@@ -23,7 +23,7 @@ The current repository is an executable prototype. It performs no external write
 - optimistic state versions and a deliberately limited HTTP API
 - durable Approval, pause, resume, cancel, retry, and recovery through Temporal
 - transactional audit/outbox persistence and database-enforced execution idempotency
-- canonical, signed `awg.protocol/v1alpha1` Action Grants and strict decoding
+- canonical, signed `themisy.protocol/v1alpha1` Action Grants and strict decoding
 - OIDC signature/issuer/audience/expiry verification and trusted delegation scope checks
 - monotonic OPA policy layers with a mandatory local baseline
 - Runner capability allowlists, durable nonce journal, replay protection, and disconnect-safe reconciliation
@@ -60,19 +60,19 @@ make compose-up
 The default process loads `examples/contracts` and `examples/profiles`. To exercise the legacy JSON catalog compatibility adapter instead:
 
 ```bash
-go run ./cmd/gateway -config config/gateway.example.yaml -catalog config/services.json
+go run ./cmd/themisy -config config/themisy.example.yaml -catalog config/services.json
 ```
 
 The durable runtime uses PostgreSQL for records/read projections and Temporal
-for active workflow history. Start PostgreSQL, Temporal, the Gateway, and a
+for active workflow history. Start PostgreSQL, Temporal, the Themisy Control Plane, and a
 separate Worker with:
 
 ```bash
 make compose-up
 ```
 
-Configuration is loaded from `config/gateway.example.yaml`; `AWG_DATABASE_URL`,
-`AWG_TEMPORAL_ADDRESS`, and the other `AWG_*` variables override file values.
+Configuration is loaded from `config/themisy.example.yaml`; `THEMISY_DATABASE_URL`,
+`THEMISY_TEMPORAL_ADDRESS`, and the other `THEMISY_*` variables override file values.
 The compose stack is intended for local development, not production operation.
 
 Packet 04 provides a Runner process scaffold with validated GitHub Actions and Datadog configuration and a health-only inbound endpoint:
@@ -83,7 +83,7 @@ go run ./cmd/runner -config config/runner.example.yaml -check-config
 
 The Runner execution core invokes the public typed Adapter SDK only after Grant, identity, policy, audit, and replay checks. It exposes no arbitrary command, HTTP, workflow path, or cloud API field. Production configuration requires durable journal storage, customer-managed trust keys, allow-listed GitHub/Datadog targets, and Runner-local short-lived credential files. The inbound Action Grant transport is intentionally deferred to Packet 05, so the health endpoint continues to report `accepting_actions: false`.
 
-GitHub target workflows must declare the fixed `awg_*` inputs and use the correlation run name `awg:${{ inputs.awg_idempotency_key }}`. A dispatch timeout is reconciled by that title and is never blindly retried. See ADR-0007 before enabling a staging adapter.
+GitHub target workflows must declare the fixed `themisy_*` inputs and use the correlation run name `themisy:${{ inputs.themisy_idempotency_key }}`. A dispatch timeout is reconciled by that title and is never blindly retried. See ADR-0007 before enabling a staging adapter.
 
 `examples/release.json` uses the versioned `ReleaseIntent` envelope. The same HTTP paths continue to accept the original unversioned `ReleaseRequest` JSON for compatibility.
 
@@ -143,7 +143,7 @@ flowchart LR
 
     MCP --> O
 
-    O --> CP["Agent Write Gateway<br/>Plan・Policy・Approval・Grant"]
+    O --> CP["Themisy<br/>Plan・Policy・Approval・Grant"]
 
     CP --> R["顧客環境Runner<br/>最終認可・Credential取得"]
 
@@ -176,7 +176,7 @@ flowchart LR
 ## Package map
 
 ```text
-cmd/gateway       HTTP server composition root
+cmd/themisy       HTTP server composition root
 cmd/runner        customer Runner configuration and process scaffold
 internal/api      deliberately limited external API
 internal/application release use cases and workflow/outbox dispatch

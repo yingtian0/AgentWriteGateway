@@ -1,4 +1,4 @@
-apiVersion: execution.agentwritegateway.io/v1alpha1
+apiVersion: execution.themisy.io/v1alpha1
 kind: ReleaseProfile
 metadata:
   name: ecs-canary-critical

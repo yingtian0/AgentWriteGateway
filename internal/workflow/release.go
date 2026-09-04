@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"agentwritegateway/internal/audit"
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/executor"
-	"agentwritegateway/pkg/adapter"
+	"themisy/internal/audit"
+	"themisy/internal/domain"
+	"themisy/internal/executor"
+	"themisy/pkg/adapter"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"

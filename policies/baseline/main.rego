@@ -1,4 +1,4 @@
-package agentwritegateway.authorization
+package themisy.authorization
 
 import rego.v1
 
@@ -29,7 +29,7 @@ deny contains "MISSING_DELEGATION" if {
 }
 
 deny contains "UNSUPPORTED_POLICY_INPUT" if {
-	input.version != "awg.policy.input/v1alpha1"
+	input.version != "themisy.policy.input/v1alpha1"
 }
 
 deny contains "MISSING_PINNED_CONTEXT" if {

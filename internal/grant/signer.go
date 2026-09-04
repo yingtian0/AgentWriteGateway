@@ -7,7 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"agentwritegateway/pkg/protocol"
+	"themisy/pkg/protocol"
 )
 
 const AlgorithmEd25519 = "Ed25519"

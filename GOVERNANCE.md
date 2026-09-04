@@ -1,6 +1,6 @@
 # Governance
 
-Agent Write Gateway uses a maintainer-led, consensus-seeking governance model. The goal is to keep safety boundaries reviewable while allowing contributors to earn responsibility through sustained work.
+Themisy uses a maintainer-led, consensus-seeking governance model. The goal is to keep safety boundaries reviewable while allowing contributors to earn responsibility through sustained work.
 
 ## Roles
 

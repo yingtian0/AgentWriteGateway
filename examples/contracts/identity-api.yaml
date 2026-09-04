@@ -1,9 +1,9 @@
-apiVersion: execution.agentwritegateway.io/v1alpha1
+apiVersion: execution.themisy.io/v1alpha1
 kind: ServiceContract
 metadata:
   name: identity-api
   owner: identity-team
-  repository: github.com/example/agent-write-gateway-demo
+  repository: github.com/example/themisy-demo
   riskTier: high
 environments:
   staging:

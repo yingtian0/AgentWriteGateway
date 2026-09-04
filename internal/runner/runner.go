@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	"agentwritegateway/internal/grant"
-	"agentwritegateway/internal/identity"
-	"agentwritegateway/internal/policy"
-	"agentwritegateway/internal/store"
-	"agentwritegateway/pkg/credentials"
-	"agentwritegateway/pkg/protocol"
+	"themisy/internal/grant"
+	"themisy/internal/identity"
+	"themisy/internal/policy"
+	"themisy/internal/store"
+	"themisy/pkg/credentials"
+	"themisy/pkg/protocol"
 )
 
 type Reason string

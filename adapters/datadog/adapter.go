@@ -14,8 +14,8 @@ import (
 	"sort"
 	"time"
 
-	"agentwritegateway/pkg/adapter"
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/adapter"
+	"themisy/pkg/credentials"
 )
 
 type HTTPDoer interface {

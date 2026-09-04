@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/store"
-	rootmigrations "agentwritegateway/migrations"
+	"themisy/internal/domain"
+	"themisy/internal/store"
+	rootmigrations "themisy/migrations"
 
 	"github.com/golang-migrate/migrate/v4"
 	pgxmigrate "github.com/golang-migrate/migrate/v4/database/pgx/v5"

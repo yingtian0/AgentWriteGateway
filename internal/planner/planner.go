@@ -10,12 +10,12 @@ import (
 	"sort"
 	"time"
 
-	"agentwritegateway/internal/contract"
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/profile"
+	"themisy/internal/contract"
+	"themisy/internal/domain"
+	"themisy/internal/profile"
 )
 
-const PlanAPIVersion = "execution.agentwritegateway.io/v1alpha1"
+const PlanAPIVersion = "execution.themisy.io/v1alpha1"
 
 var (
 	ErrNoChanges       = errors.New("at least one change is required")

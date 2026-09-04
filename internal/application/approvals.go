@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"agentwritegateway/internal/domain"
-	workflowcore "agentwritegateway/internal/workflow"
+	"themisy/internal/domain"
+	workflowcore "themisy/internal/workflow"
 )
 
 var ErrApproval = errors.New("approval rejected")

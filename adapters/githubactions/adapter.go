@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"agentwritegateway/pkg/adapter"
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/adapter"
+	"themisy/pkg/credentials"
 )
 
-const correlationRunNamePrefix = "awg:"
+const correlationRunNamePrefix = "themisy:"
 
 type HTTPDoer interface {
 	Do(*http.Request) (*http.Response, error)
@@ -52,10 +52,10 @@ func (a *Adapter) Deploy(ctx context.Context, request adapter.DeployRequest, cre
 	}
 	correlation := adapter.CorrelationID(request.IdempotencyKey)
 	return a.dispatch(ctx, target, target.DeployWorkflow, map[string]string{
-		"awg_artifact_digest": request.ArtifactDigest,
-		"awg_environment":     request.Target.Environment,
-		"awg_idempotency_key": correlation,
-		"awg_service":         request.Target.Service,
+		"themisy_artifact_digest": request.ArtifactDigest,
+		"themisy_environment":     request.Target.Environment,
+		"themisy_idempotency_key": correlation,
+		"themisy_service":         request.Target.Service,
 	}, correlation, credential, "deploy")
 }
 
@@ -69,10 +69,10 @@ func (a *Adapter) Rollback(ctx context.Context, request adapter.RollbackRequest,
 	}
 	correlation := adapter.CorrelationID(request.IdempotencyKey)
 	return a.dispatch(ctx, target, target.RollbackWorkflow, map[string]string{
-		"awg_environment":           request.Target.Environment,
-		"awg_idempotency_key":       correlation,
-		"awg_original_execution_id": request.OriginalDeployment.ExternalExecutionID,
-		"awg_service":               request.Target.Service,
+		"themisy_environment":           request.Target.Environment,
+		"themisy_idempotency_key":       correlation,
+		"themisy_original_execution_id": request.OriginalDeployment.ExternalExecutionID,
+		"themisy_service":               request.Target.Service,
 	}, correlation, credential, "rollback")
 }
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 func TestLoadProfilesAndCanonicalHash(t *testing.T) {
@@ -24,8 +24,8 @@ func TestLoadProfilesAndCanonicalHash(t *testing.T) {
 
 func TestProfileDecodeRejectsUnsupportedSchemaAndUnknownFields(t *testing.T) {
 	for name, data := range map[string]string{
-		"unsupported schema": "apiVersion: execution.agentwritegateway.io/v2\nkind: ReleaseProfile\n",
-		"unknown field":      "apiVersion: execution.agentwritegateway.io/v1alpha1\nkind: ReleaseProfile\nunknown: true\n",
+		"unsupported schema": "apiVersion: execution.themisy.io/v2\nkind: ReleaseProfile\n",
+		"unknown field":      "apiVersion: execution.themisy.io/v1alpha1\nkind: ReleaseProfile\nunknown: true\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Decode([]byte(data)); err == nil {

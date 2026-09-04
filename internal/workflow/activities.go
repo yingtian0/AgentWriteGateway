@@ -9,11 +9,11 @@ import (
 	"reflect"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/executor"
-	"agentwritegateway/internal/policy"
-	"agentwritegateway/internal/store"
-	verificationcore "agentwritegateway/internal/verification"
+	"themisy/internal/domain"
+	"themisy/internal/executor"
+	"themisy/internal/policy"
+	"themisy/internal/store"
+	verificationcore "themisy/internal/verification"
 
 	"go.temporal.io/sdk/temporal"
 )

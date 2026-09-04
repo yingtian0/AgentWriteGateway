@@ -2,13 +2,13 @@ services:
   postgres:
     image: postgres:17.6-alpine
     environment:
-      POSTGRES_USER: agentwritegateway
-      POSTGRES_PASSWORD: agentwritegateway
-      POSTGRES_DB: agentwritegateway
+      POSTGRES_USER: themisy
+      POSTGRES_PASSWORD: themisy
+      POSTGRES_DB: themisy
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agentwritegateway -d agentwritegateway"]
+      test: ["CMD-SHELL", "pg_isready -U themisy -d themisy"]
       interval: 2s
       timeout: 2s
       retries: 30
@@ -23,26 +23,26 @@ services:
     environment:
       DB: postgres12
       DB_PORT: 5432
-      POSTGRES_USER: agentwritegateway
-      POSTGRES_PWD: agentwritegateway
+      POSTGRES_USER: themisy
+      POSTGRES_PWD: themisy
       POSTGRES_SEEDS: postgres
       DBNAME: temporal
       VISIBILITY_DBNAME: temporal_visibility
     ports:
       - "7233:7233"
 
-  gateway:
+  themisy-control:
     image: golang:1.26.6-alpine
     working_dir: /workspace
-    command: ["go", "run", "./cmd/gateway", "-config", "config/gateway.example.yaml", "-mode", "gateway"]
+    command: ["go", "run", "./cmd/themisy", "-config", "config/themisy.example.yaml", "-mode", "control"]
     depends_on:
       postgres:
         condition: service_healthy
       temporal:
         condition: service_started
     environment:
-      AWG_DATABASE_URL: postgres://agentwritegateway:agentwritegateway@postgres:5432/agentwritegateway?sslmode=disable
-      AWG_TEMPORAL_ADDRESS: temporal:7233
+      THEMISY_DATABASE_URL: postgres://themisy:themisy@postgres:5432/themisy?sslmode=disable
+      THEMISY_TEMPORAL_ADDRESS: temporal:7233
     ports:
       - "8080:8080"
     volumes:
@@ -51,15 +51,15 @@ services:
   worker:
     image: golang:1.26.6-alpine
     working_dir: /workspace
-    command: ["go", "run", "./cmd/gateway", "-config", "config/gateway.example.yaml", "-mode", "worker"]
+    command: ["go", "run", "./cmd/themisy", "-config", "config/themisy.example.yaml", "-mode", "worker"]
     depends_on:
       postgres:
         condition: service_healthy
       temporal:
         condition: service_started
     environment:
-      AWG_DATABASE_URL: postgres://agentwritegateway:agentwritegateway@postgres:5432/agentwritegateway?sslmode=disable
-      AWG_TEMPORAL_ADDRESS: temporal:7233
+      THEMISY_DATABASE_URL: postgres://themisy:themisy@postgres:5432/themisy?sslmode=disable
+      THEMISY_TEMPORAL_ADDRESS: temporal:7233
     volumes:
       - ../..:/workspace
 
@@ -71,10 +71,10 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      AWG_RUNNER_DATABASE_URL: postgres://agentwritegateway:agentwritegateway@postgres:5432/agentwritegateway?sslmode=disable
+      THEMISY_RUNNER_DATABASE_URL: postgres://themisy:themisy@postgres:5432/themisy?sslmode=disable
       # Set these to Runner-local secret files before enabling a real adapter.
-      AWG_GITHUB_TOKEN_FILE: ""
-      AWG_DATADOG_CREDENTIAL_FILE: ""
+      THEMISY_GITHUB_TOKEN_FILE: ""
+      THEMISY_DATADOG_CREDENTIAL_FILE: ""
     ports:
       - "8081:8081"
     volumes:

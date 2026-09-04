@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/grant"
-	"agentwritegateway/pkg/protocol"
-	policyfiles "agentwritegateway/policies"
+	"themisy/internal/domain"
+	"themisy/internal/grant"
+	"themisy/pkg/protocol"
+	policyfiles "themisy/policies"
 )
 
 func TestOPAHierarchyIsMonotonicAndUsesCanonicalInput(t *testing.T) {
@@ -17,7 +17,7 @@ func TestOPAHierarchyIsMonotonicAndUsesCanonicalInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lower := `package agentwritegateway.authorization
+	lower := `package themisy.authorization
 import rego.v1
 service_preference := true`
 	bundle := Bundle{Version: "bundle-1", Hash: "sha256:test", Modules: []Module{{Name: "main.rego", Layer: LayerPlatform, Source: string(baseline)}, {Name: "service.rego", Layer: LayerService, Source: lower}}}

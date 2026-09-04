@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"agentwritegateway/pkg/adapter"
+	"themisy/pkg/adapter"
 )
 
 const (

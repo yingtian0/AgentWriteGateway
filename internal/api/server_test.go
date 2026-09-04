@@ -9,12 +9,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/engine"
-	"agentwritegateway/internal/executor"
-	"agentwritegateway/internal/planner"
-	"agentwritegateway/internal/policy"
-	"agentwritegateway/internal/store"
+	"themisy/internal/domain"
+	"themisy/internal/engine"
+	"themisy/internal/executor"
+	"themisy/internal/planner"
+	"themisy/internal/policy"
+	"themisy/internal/store"
 )
 
 func TestPlanAndStartRoutes(t *testing.T) {
@@ -72,7 +72,7 @@ func TestVersionedIntentUsesExistingPlanAndStartRoutes(t *testing.T) {
 	e := engine.New(p, policy.New(), executor.NewMock(nil), store.NewMemory())
 	handler := New(e, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
 	body := []byte(`{
-      "api_version":"execution.agentwritegateway.io/v1alpha1",
+      "api_version":"execution.themisy.io/v1alpha1",
       "kind":"ReleaseIntent",
       "request_id":"versioned-http-1",
       "release_version":"release-1",
@@ -104,7 +104,7 @@ func TestVersionedIntentReturnsTypedReasonCode(t *testing.T) {
 	e := engine.New(p, policy.New(), executor.NewMock(nil), store.NewMemory())
 	handler := New(e, slog.New(slog.NewTextHandler(io.Discard, nil))).Handler()
 	body := []byte(`{
-      "api_version":"execution.agentwritegateway.io/v2",
+      "api_version":"execution.themisy.io/v2",
       "kind":"ReleaseIntent",
       "request_id":"invalid-version",
       "release_version":"release-1",

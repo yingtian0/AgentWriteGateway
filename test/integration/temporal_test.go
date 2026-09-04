@@ -15,14 +15,14 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/api"
-	"agentwritegateway/internal/application"
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/executor"
-	"agentwritegateway/internal/planner"
-	"agentwritegateway/internal/policy"
-	postgresstore "agentwritegateway/internal/store/postgres"
-	workflowcore "agentwritegateway/internal/workflow"
+	"themisy/internal/api"
+	"themisy/internal/application"
+	"themisy/internal/domain"
+	"themisy/internal/executor"
+	"themisy/internal/planner"
+	"themisy/internal/policy"
+	postgresstore "themisy/internal/store/postgres"
+	workflowcore "themisy/internal/workflow"
 
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
@@ -40,7 +40,7 @@ func TestTemporalAPIWorkerRestartApprovalCancelAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer persistent.Close()
-	address := os.Getenv("AWG_TEMPORAL_ADDRESS")
+	address := os.Getenv("THEMISY_TEMPORAL_ADDRESS")
 	if address == "" {
 		address = "localhost:7233"
 	}

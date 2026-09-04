@@ -3,8 +3,8 @@ package catalog
 import (
 	"testing"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/planner"
+	"themisy/internal/domain"
+	"themisy/internal/planner"
 )
 
 func TestLegacyCatalogConvertsToContracts(t *testing.T) {

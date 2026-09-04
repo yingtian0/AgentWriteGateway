@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/pkg/adapter"
+	"themisy/pkg/adapter"
 )
 
 func TestEvidenceDetailsOmitRawQueryAndSecrets(t *testing.T) {

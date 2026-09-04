@@ -3,7 +3,7 @@ package verification
 import (
 	"errors"
 
-	"agentwritegateway/pkg/adapter"
+	"themisy/pkg/adapter"
 )
 
 func ValidateEvidence(evidence adapter.Evidence) error {

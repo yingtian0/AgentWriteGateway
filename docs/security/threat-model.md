@@ -57,7 +57,7 @@ Action Grants and Policy Bundles use canonical Ed25519 signatures as defined in 
 
 **Required tests:** Single-bit or field-level mutation of every bound field is rejected and invokes neither Credential Broker nor adapter.
 
-**Implemented boundary:** `awg.protocol/v1alpha1` uses strict JSON decoding and a canonical struct representation. Runner verification fixes the order of protocol, signature/issuer/audience, expiry/replay, verified subject, trusted delegation, pinned context, approval, capability, local OPA, journal reservation, credential acquisition, and typed adapter dispatch.
+**Implemented boundary:** `themisy.protocol/v1alpha1` uses strict JSON decoding and a canonical struct representation. Runner verification fixes the order of protocol, signature/issuer/audience, expiry/replay, verified subject, trusted delegation, pinned context, approval, capability, local OPA, journal reservation, credential acquisition, and typed adapter dispatch.
 
 ### Action Grant replay
 
@@ -93,7 +93,7 @@ Action Grants and Policy Bundles use canonical Ed25519 signatures as defined in 
 
 **Required tests:** Duplicate start, approval, cancellation, provider event, and grant delivery are harmless; an older event cannot move state backward or reopen a completed step.
 
-**Implemented adapter boundary:** GitHub repository, deploy workflow, rollback workflow, and ref are Runner-owned allow-list entries. The adapter sends only fixed `awg_*` inputs and requires an external workflow run ID. Ambiguous POST responses are recorded as unknown and are never blindly retried. Reconciliation searches only configured workflows for the exact hashed idempotency correlation in the workflow run title.
+**Implemented adapter boundary:** GitHub repository, deploy workflow, rollback workflow, and ref are Runner-owned allow-list entries. The adapter sends only fixed `themisy_*` inputs and requires an external workflow run ID. Ambiguous POST responses are recorded as unknown and are never blindly retried. Reconciliation searches only configured workflows for the exact hashed idempotency correlation in the workflow run title.
 
 ### Missing, delayed, or manipulated metrics
 

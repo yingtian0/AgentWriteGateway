@@ -1,9 +1,9 @@
 package contract
 
-import "agentwritegateway/internal/domain"
+import "themisy/internal/domain"
 
 const (
-	APIVersion = "execution.agentwritegateway.io/v1alpha1"
+	APIVersion = "execution.themisy.io/v1alpha1"
 	Kind       = "ServiceContract"
 )
 

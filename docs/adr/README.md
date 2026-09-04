@@ -6,7 +6,7 @@ Architecture Decision Records (ADRs) capture decisions that materially affect Tr
 
 | ADR | Status | Decision |
 |---|---|---|
-| [0001](0001-change-execution-control-plane.md) | Accepted | Build a change-execution Control Plane, not an AI-specific deploy tool |
+| [0001](0001-themisy-agent-operations-control-layer.md) | Accepted | Build an Agent Operations Control Layer, not an AI-specific deploy tool |
 | [0002](0002-temporal-workflow-engine.md) | Accepted | Use Temporal as the durable workflow engine |
 | [0003](0003-opa-policy-engine.md) | Accepted | Use OPA with Control Plane evaluation and final Runner enforcement |
 | [0004](0004-customer-environment-runner.md) | Accepted | Keep credentials and final write enforcement in a customer-hosted Runner |

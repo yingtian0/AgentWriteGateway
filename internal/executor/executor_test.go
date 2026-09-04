@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"agentwritegateway/pkg/adapter"
+	"themisy/pkg/adapter"
 )
 
 func TestMockModelsIdempotentDeployAndVerifiedRollback(t *testing.T) {

@@ -1,7 +1,7 @@
 .PHONY: run compose-up compose-down test test-race test-integration test-scenario test-policy test-adapter test-planner benchmark-planner lint vet check fmt fmt-check
 
 run:
-	go run ./cmd/gateway
+	go run ./cmd/themisy
 
 compose-up:
 	docker compose -f deploy/compose/compose.yaml up -d
@@ -17,7 +17,7 @@ test-race:
 
 test-integration:
 	docker compose -f deploy/compose/compose.yaml up -d postgres temporal
-	AWG_INTEGRATION=1 go test -tags=integration -count=1 ./test/integration
+	THEMISY_INTEGRATION=1 go test -tags=integration -count=1 ./test/integration
 
 test-scenario:
 	go test -count=1 ./test/scenario/...

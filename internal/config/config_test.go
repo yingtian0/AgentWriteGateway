@@ -6,7 +6,7 @@ import (
 )
 
 func TestLoadRejectsUnknownConfigurationFields(t *testing.T) {
-	path := t.TempDir() + "/gateway.yaml"
+	path := t.TempDir() + "/themisy.yaml"
 	if err := os.WriteFile(path, []byte("unknown: true\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -16,7 +16,7 @@ func TestLoadRejectsUnknownConfigurationFields(t *testing.T) {
 }
 
 func TestExampleConfigurationLoads(t *testing.T) {
-	configuration, err := Load("../../config/gateway.example.yaml")
+	configuration, err := Load("../../config/themisy.example.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

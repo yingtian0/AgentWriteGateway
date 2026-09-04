@@ -1,9 +1,9 @@
-apiVersion: execution.agentwritegateway.io/v1alpha1
+apiVersion: execution.themisy.io/v1alpha1
 kind: ServiceContract
 metadata:
-  name: gateway-api
+  name: operations-api
   owner: platform-team
-  repository: github.com/example/agent-write-gateway-demo
+  repository: github.com/example/themisy-demo
   riskTier: high
 environments:
   staging:
@@ -26,7 +26,7 @@ verification:
   observationWindow: 5m
   checks:
     - type: synthetic
-      check: gateway-smoke
+      check: operations-smoke
 rollback:
   capability: automatic
   strategy: previous-task-definition

@@ -9,12 +9,12 @@ import (
 	"sort"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/executor"
-	"agentwritegateway/internal/planner"
-	"agentwritegateway/internal/policy"
-	"agentwritegateway/internal/store"
-	"agentwritegateway/pkg/adapter"
+	"themisy/internal/domain"
+	"themisy/internal/executor"
+	"themisy/internal/planner"
+	"themisy/internal/policy"
+	"themisy/internal/store"
+	"themisy/pkg/adapter"
 )
 
 var (

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/executor"
-	"agentwritegateway/internal/policy"
-	"agentwritegateway/internal/store"
+	"themisy/internal/domain"
+	"themisy/internal/executor"
+	"themisy/internal/policy"
+	"themisy/internal/store"
 
 	"go.temporal.io/sdk/testsuite"
 )

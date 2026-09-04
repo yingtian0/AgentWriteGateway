@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 type Memory struct {

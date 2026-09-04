@@ -13,9 +13,9 @@ import (
 	"syscall"
 	"time"
 
-	"agentwritegateway/adapters/datadog"
-	"agentwritegateway/adapters/githubactions"
-	"agentwritegateway/pkg/protocol"
+	"themisy/adapters/datadog"
+	"themisy/adapters/githubactions"
+	"themisy/pkg/protocol"
 
 	"go.yaml.in/yaml/v3"
 )

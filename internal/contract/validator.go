@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 func Validate(contract ServiceContract) error {

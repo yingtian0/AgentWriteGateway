@@ -1,7 +1,7 @@
 package domain
 
 const (
-	ReleaseIntentAPIVersion = "execution.agentwritegateway.io/v1alpha1"
+	ReleaseIntentAPIVersion = "execution.themisy.io/v1alpha1"
 	ReleaseIntentKind       = "ReleaseIntent"
 )
 

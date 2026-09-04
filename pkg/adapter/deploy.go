@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/credentials"
 )
 
 type DeployRequest struct {

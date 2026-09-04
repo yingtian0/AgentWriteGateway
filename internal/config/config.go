@@ -35,16 +35,16 @@ type Planning struct {
 }
 
 func Load(path string) (Config, error) {
-	result := Config{Mode: "all", HTTP: HTTP{Address: ":8080"}, Database: Database{AutoMigrate: true}, Temporal: Temporal{Address: "localhost:7233", Namespace: "default", TaskQueue: "agent-write-gateway-releases"}, Planning: Planning{Contracts: "examples/contracts", Profiles: "examples/profiles"}}
+	result := Config{Mode: "all", HTTP: HTTP{Address: ":8080"}, Database: Database{AutoMigrate: true}, Temporal: Temporal{Address: "localhost:7233", Namespace: "default", TaskQueue: "themisy-releases"}, Planning: Planning{Contracts: "examples/contracts", Profiles: "examples/profiles"}}
 	if path != "" {
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return Config{}, fmt.Errorf("read gateway config: %w", err)
+			return Config{}, fmt.Errorf("read Themisy config: %w", err)
 		}
 		decoder := yaml.NewDecoder(strings.NewReader(string(data)))
 		decoder.KnownFields(true)
 		if err := decoder.Decode(&result); err != nil {
-			return Config{}, fmt.Errorf("decode gateway config: %w", err)
+			return Config{}, fmt.Errorf("decode Themisy config: %w", err)
 		}
 	}
 	applyEnv(&result)
@@ -56,9 +56,9 @@ func Load(path string) (Config, error) {
 
 func (c Config) Validate() error {
 	switch c.Mode {
-	case "gateway", "worker", "all":
+	case "control", "worker", "all":
 	default:
-		return fmt.Errorf("mode must be gateway, worker, or all")
+		return fmt.Errorf("mode must be control, worker, or all")
 	}
 	if c.Database.URL == "" {
 		return fmt.Errorf("database.url is required")
@@ -73,15 +73,15 @@ func (c Config) Validate() error {
 }
 
 func applyEnv(c *Config) {
-	setString("AWG_MODE", &c.Mode)
-	setString("AWG_HTTP_ADDRESS", &c.HTTP.Address)
-	setString("AWG_DATABASE_URL", &c.Database.URL)
-	setString("AWG_TEMPORAL_ADDRESS", &c.Temporal.Address)
-	setString("AWG_TEMPORAL_NAMESPACE", &c.Temporal.Namespace)
-	setString("AWG_TEMPORAL_TASK_QUEUE", &c.Temporal.TaskQueue)
-	setString("AWG_CONTRACTS", &c.Planning.Contracts)
-	setString("AWG_PROFILES", &c.Planning.Profiles)
-	setString("AWG_LEGACY_CATALOG", &c.Planning.LegacyCatalog)
+	setString("THEMISY_MODE", &c.Mode)
+	setString("THEMISY_HTTP_ADDRESS", &c.HTTP.Address)
+	setString("THEMISY_DATABASE_URL", &c.Database.URL)
+	setString("THEMISY_TEMPORAL_ADDRESS", &c.Temporal.Address)
+	setString("THEMISY_TEMPORAL_NAMESPACE", &c.Temporal.Namespace)
+	setString("THEMISY_TEMPORAL_TASK_QUEUE", &c.Temporal.TaskQueue)
+	setString("THEMISY_CONTRACTS", &c.Planning.Contracts)
+	setString("THEMISY_PROFILES", &c.Planning.Profiles)
+	setString("THEMISY_LEGACY_CATALOG", &c.Planning.LegacyCatalog)
 }
 func setString(name string, target *string) {
 	if value, ok := os.LookupEnv(name); ok {

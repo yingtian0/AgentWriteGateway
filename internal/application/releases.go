@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/planner"
-	"agentwritegateway/internal/store"
-	workflowcore "agentwritegateway/internal/workflow"
+	"themisy/internal/domain"
+	"themisy/internal/planner"
+	"themisy/internal/store"
+	workflowcore "themisy/internal/workflow"
 )
 
 var ErrInvalidRequest = errors.New("invalid release request")

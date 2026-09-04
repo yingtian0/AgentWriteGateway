@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/contract"
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/profile"
+	"themisy/internal/contract"
+	"themisy/internal/domain"
+	"themisy/internal/profile"
 )
 
 func TestPlanOrdersDependenciesAndIsDeterministic(t *testing.T) {
 	p, err := New([]domain.Service{
-		{Name: "gateway", ReleasePhase: 0, Dependencies: []string{"payments"}},
+		{Name: "operations", ReleasePhase: 0, Dependencies: []string{"payments"}},
 		{Name: "identity", ReleasePhase: 0},
 		{Name: "payments", ReleasePhase: 0, Dependencies: []string{"identity"}},
 	})
@@ -23,7 +23,7 @@ func TestPlanOrdersDependenciesAndIsDeterministic(t *testing.T) {
 	request := domain.ReleaseRequest{
 		ReleaseVersion: "v1", Environment: domain.EnvironmentProduction,
 		Changes: []domain.Change{
-			{Service: "gateway", DesiredVersion: "c"},
+			{Service: "operations", DesiredVersion: "c"},
 			{Service: "identity", DesiredVersion: "a"},
 			{Service: "payments", DesiredVersion: "b"},
 		},
@@ -35,7 +35,7 @@ func TestPlanOrdersDependenciesAndIsDeterministic(t *testing.T) {
 	if len(plan.Phases) != 3 {
 		t.Fatalf("got %d phases, want 3", len(plan.Phases))
 	}
-	for index, want := range []string{"identity", "payments", "gateway"} {
+	for index, want := range []string{"identity", "payments", "operations"} {
 		if got := plan.Phases[index].Steps[0].Service; got != want {
 			t.Fatalf("phase %d service = %q, want %q", index, got, want)
 		}
@@ -71,7 +71,7 @@ func TestPlanIntentRejectsUnsupportedSchemaVersion(t *testing.T) {
 		Environment: domain.EnvironmentStaging,
 		Changes:     []domain.Change{{Service: "identity", DesiredVersion: "sha"}},
 	})
-	intent.APIVersion = "execution.agentwritegateway.io/v2"
+	intent.APIVersion = "execution.themisy.io/v2"
 	_, err = p.PlanIntent(intent)
 	if code, ok := domain.ReasonOf(err); !ok || code != domain.ReasonUnsupportedSchemaVersion {
 		t.Fatalf("got %v, want %s", err, domain.ReasonUnsupportedSchemaVersion)
@@ -88,7 +88,7 @@ func TestPlanUsesTypedDependencySemantics(t *testing.T) {
 		ReleaseVersion: "release-1",
 		Environment:    domain.EnvironmentProduction,
 		Changes: []domain.Change{
-			{Service: "gateway-api", DesiredVersion: "gateway"},
+			{Service: "operations-api", DesiredVersion: "operations"},
 			{Service: "identity-api", DesiredVersion: "identity"},
 			{Service: "payment-api", DesiredVersion: "payment"},
 		},
@@ -99,7 +99,7 @@ func TestPlanUsesTypedDependencySemantics(t *testing.T) {
 	if len(plan.Phases) != 3 {
 		t.Fatalf("phases=%d, want 3: %#v", len(plan.Phases), plan.Phases)
 	}
-	for index, want := range []string{"identity-api", "payment-api", "gateway-api"} {
+	for index, want := range []string{"identity-api", "payment-api", "operations-api"} {
 		step := plan.Phases[index].Steps[0]
 		if step.Service != want {
 			t.Fatalf("phase %d service=%s, want %s", index, step.Service, want)
@@ -108,12 +108,12 @@ func TestPlanUsesTypedDependencySemantics(t *testing.T) {
 			t.Fatalf("step lacks pinned contract/profile: %#v", step)
 		}
 	}
-	gateway := plan.Phases[2].Steps[0]
-	if len(gateway.Dependencies) != 2 {
-		t.Fatalf("gateway dependencies=%v, want traffic and runtime", gateway.Dependencies)
+	operations := plan.Phases[2].Steps[0]
+	if len(operations.Dependencies) != 2 {
+		t.Fatalf("operations dependencies=%v, want traffic and runtime", operations.Dependencies)
 	}
-	if gateway.Dependencies[0].Type != domain.DependencyRuntime || gateway.Dependencies[1].Type != domain.DependencyTraffic {
-		t.Fatalf("typed dependencies were not retained: %v", gateway.Dependencies)
+	if operations.Dependencies[0].Type != domain.DependencyRuntime || operations.Dependencies[1].Type != domain.DependencyTraffic {
+		t.Fatalf("typed dependencies were not retained: %v", operations.Dependencies)
 	}
 
 	for left, right := 0, len(contracts)-1; left < right; left, right = left+1, right-1 {
@@ -131,7 +131,7 @@ func TestPlanUsesTypedDependencySemantics(t *testing.T) {
 		Environment:    domain.EnvironmentProduction,
 		Changes: []domain.Change{
 			{Service: "payment-api", DesiredVersion: "payment"},
-			{Service: "gateway-api", DesiredVersion: "gateway"},
+			{Service: "operations-api", DesiredVersion: "operations"},
 			{Service: "identity-api", DesiredVersion: "identity"},
 		},
 	}))

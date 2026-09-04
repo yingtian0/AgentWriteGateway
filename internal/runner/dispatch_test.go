@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/pkg/adapter"
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/adapter"
+	"themisy/pkg/credentials"
 )
 
 func TestSDKDispatcherDoesNotReturnCredentialAndUnknownIsNotRetried(t *testing.T) {

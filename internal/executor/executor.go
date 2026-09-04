@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"agentwritegateway/pkg/adapter"
+	"themisy/pkg/adapter"
 )
 
 type DeployRequest struct {

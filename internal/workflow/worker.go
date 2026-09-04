@@ -7,7 +7,7 @@ import (
 	"go.temporal.io/sdk/worker"
 )
 
-const DefaultTaskQueue = "agent-write-gateway-releases"
+const DefaultTaskQueue = "themisy-releases"
 
 func NewWorker(temporalClient client.Client, taskQueue string, activities *Activities) worker.Worker {
 	if taskQueue == "" {

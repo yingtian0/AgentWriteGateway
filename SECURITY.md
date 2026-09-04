@@ -2,7 +2,7 @@
 
 ## Project status
 
-Agent Write Gateway is a prototype and is not production ready. The in-memory store, mock adapter, and demo identity inputs do not provide a production security boundary. Do not connect this version to production credentials or production write APIs.
+Themisy is a prototype and is not production ready. The in-memory store, mock adapter, and demo identity inputs do not provide a production security boundary. Do not connect this version to production credentials or production write APIs.
 
 ## Reporting a vulnerability
 

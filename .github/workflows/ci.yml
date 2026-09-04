@@ -56,7 +56,7 @@ jobs:
         run: |
           # Infrastructure packages are exercised by the Compose integration job.
           go list ./... \
-            | grep -Ev '/internal/store/postgres$|/cmd/gateway$|/migrations$' \
+            | grep -Ev '/internal/store/postgres$|/cmd/themisy$|/migrations$' \
             | xargs go test -shuffle=on -count=1 -covermode=atomic -coverprofile=coverage.out
 
       - name: Enforce coverage floor

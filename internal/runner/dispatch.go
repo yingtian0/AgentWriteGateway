@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"agentwritegateway/internal/identity"
-	"agentwritegateway/pkg/adapter"
-	"agentwritegateway/pkg/credentials"
-	"agentwritegateway/pkg/protocol"
+	"themisy/internal/identity"
+	"themisy/pkg/adapter"
+	"themisy/pkg/credentials"
+	"themisy/pkg/protocol"
 )
 
 type ConnectionState bool

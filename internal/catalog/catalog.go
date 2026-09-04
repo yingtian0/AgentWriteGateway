@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"agentwritegateway/internal/contract"
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/profile"
+	"themisy/internal/contract"
+	"themisy/internal/domain"
+	"themisy/internal/profile"
 )
 
 func Load(path string) ([]domain.Service, error) {

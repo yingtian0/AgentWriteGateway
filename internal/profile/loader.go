@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"agentwritegateway/internal/domain"
 	"go.yaml.in/yaml/v3"
+	"themisy/internal/domain"
 )
 
 func LoadFile(path string) (ReleaseProfile, error) {

@@ -1,6 +1,6 @@
 package audit
 
-import "agentwritegateway/pkg/adapter"
+import "themisy/pkg/adapter"
 
 // EvidenceDetails intentionally omits raw queries, credentials, and log text.
 func EvidenceDetails(evidence adapter.Evidence) map[string]any {

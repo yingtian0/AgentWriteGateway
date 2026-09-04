@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	workflowcore "agentwritegateway/internal/workflow"
+	workflowcore "themisy/internal/workflow"
 )
 
 const workflowRequestedEvent = "release.workflow.requested"
 
 // RecoverPendingWorkflows publishes workflow-start outbox records. Starting a
 // Temporal workflow uses the run ID as Workflow ID, so replaying this publisher
-// is idempotent across gateway crashes.
+// is idempotent across control-plane crashes.
 func (r *Releases) RecoverPendingWorkflows(ctx context.Context, limit int) (int, error) {
 	events, err := r.store.PendingOutboxByType(workflowRequestedEvent, limit)
 	if err != nil {

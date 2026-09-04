@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/pkg/protocol"
+	"themisy/pkg/protocol"
 )
 
 func TestVerifierRejectsExpiredModifiedAndWrongAudienceGrants(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 type Evaluation struct {

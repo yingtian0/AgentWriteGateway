@@ -7,7 +7,7 @@ import (
 	"path"
 	"time"
 
-	"agentwritegateway/pkg/protocol"
+	"themisy/pkg/protocol"
 )
 
 var ErrDelegationDenied = errors.New("AGENT_DELEGATION_DENIED")

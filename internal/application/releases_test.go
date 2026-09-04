@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/planner"
-	"agentwritegateway/internal/store"
-	workflowcore "agentwritegateway/internal/workflow"
+	"themisy/internal/domain"
+	"themisy/internal/planner"
+	"themisy/internal/store"
+	workflowcore "themisy/internal/workflow"
 )
 
 func TestStartPersistsWorkflowRequestAndDeduplicatesCommand(t *testing.T) {
@@ -81,7 +81,7 @@ func TestApprovalValidationHappensBeforeTemporalSignal(t *testing.T) {
 	}
 }
 
-func TestWorkflowStartOutboxRecoversAfterGatewayFailure(t *testing.T) {
+func TestWorkflowStartOutboxRecoversAfterControlPlaneFailure(t *testing.T) {
 	p, err := planner.New([]domain.Service{{Name: "identity"}})
 	if err != nil {
 		t.Fatal(err)

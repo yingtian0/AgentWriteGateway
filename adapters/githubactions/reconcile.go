@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"time"
 
-	"agentwritegateway/pkg/adapter"
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/adapter"
+	"themisy/pkg/credentials"
 )
 
 func (a *Adapter) Reconcile(ctx context.Context, request adapter.ReconcileRequest, credential credentials.Credential) (adapter.ReconcileResult, error) {

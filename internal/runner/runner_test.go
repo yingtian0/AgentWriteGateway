@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/grant"
-	"agentwritegateway/internal/identity"
-	"agentwritegateway/internal/policy"
-	"agentwritegateway/internal/store"
-	"agentwritegateway/pkg/credentials"
-	"agentwritegateway/pkg/protocol"
+	"themisy/internal/domain"
+	"themisy/internal/grant"
+	"themisy/internal/identity"
+	"themisy/internal/policy"
+	"themisy/internal/store"
+	"themisy/pkg/credentials"
+	"themisy/pkg/protocol"
 )
 
 func TestRunnerRejectsEveryUnsafeGrantBeforeAdapter(t *testing.T) {

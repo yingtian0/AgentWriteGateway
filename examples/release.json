@@ -1,5 +1,5 @@
 {
-  "api_version": "execution.agentwritegateway.io/v1alpha1",
+  "api_version": "execution.themisy.io/v1alpha1",
   "kind": "ReleaseIntent",
   "request_id": "demo-release-001",
   "release_version": "release-2026-08-11",
@@ -23,8 +23,8 @@
       "dependencies_healthy": true
     },
     {
-      "service": "gateway-api",
-      "desired_version": "sha-gateway",
+      "service": "operations-api",
+      "desired_version": "sha-operations",
       "ci_success": true,
       "dependencies_healthy": true
     }

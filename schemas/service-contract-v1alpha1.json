@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentwritegateway.io/schemas/service-contract-v1alpha1.json",
-  "title": "Agent Write Gateway Service Contract v1alpha1",
+  "$id": "https://themisy.io/schemas/service-contract-v1alpha1.json",
+  "title": "Themisy Service Contract v1alpha1",
   "type": "object",
   "additionalProperties": false,
   "required": ["apiVersion", "kind", "metadata", "environments", "verification", "rollback"],
   "properties": {
-    "apiVersion": {"const": "execution.agentwritegateway.io/v1alpha1"},
+    "apiVersion": {"const": "execution.themisy.io/v1alpha1"},
     "kind": {"const": "ServiceContract"},
     "metadata": {
       "type": "object",

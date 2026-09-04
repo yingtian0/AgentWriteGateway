@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/credentials"
 )
 
 func TestRunConformanceRequiresExternalIDsAndReconciliation(t *testing.T) {

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/store"
-	postgresstore "agentwritegateway/internal/store/postgres"
+	"themisy/internal/domain"
+	"themisy/internal/store"
+	postgresstore "themisy/internal/store/postgres"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -129,15 +129,15 @@ func integrationAudit(id, runID string, at time.Time) domain.AuditEvent {
 }
 func requireIntegration(t *testing.T) {
 	t.Helper()
-	if os.Getenv("AWG_INTEGRATION") != "1" {
-		t.Fatal("set AWG_INTEGRATION=1 and start deploy/compose dependencies")
+	if os.Getenv("THEMISY_INTEGRATION") != "1" {
+		t.Fatal("set THEMISY_INTEGRATION=1 and start deploy/compose dependencies")
 	}
 }
 func integrationDatabaseURL() string {
-	if value := os.Getenv("AWG_DATABASE_URL"); value != "" {
+	if value := os.Getenv("THEMISY_DATABASE_URL"); value != "" {
 		return value
 	}
-	return "postgres://agentwritegateway:agentwritegateway@localhost:5432/agentwritegateway?sslmode=disable"
+	return "postgres://themisy:themisy@localhost:5432/themisy?sslmode=disable"
 }
 func eventually(t *testing.T, timeout time.Duration, check func() error) {
 	t.Helper()

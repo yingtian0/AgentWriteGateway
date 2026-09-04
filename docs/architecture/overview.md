@@ -4,7 +4,7 @@
 
 This document defines the target OSS v1.0 boundaries. The repository currently contains a non-production prototype with PostgreSQL durable records/read projections, a Temporal Release Workflow, a fixed Go policy engine, and a mock adapter. The in-memory store and synchronous Engine remain compatibility/test implementations. Runner-side enforcement, production identity/policy, and real adapters are still target architecture rather than implemented production boundaries.
 
-Agent Write Gateway is a Change Execution Control Plane. It gives human users, CI, CLIs, and AI agents the same deterministic path for planning, authorizing, executing, verifying, stopping, and auditing a change. An AI agent is an interface and delegated actor, not a policy authority, credential holder, or workflow state store.
+Themisy is an Agent Operations Control Layer. It gives human users, CI, CLIs, and AI agents the same deterministic path for planning, authorizing, executing, verifying, stopping, and auditing a change. An AI agent is an interface and delegated actor, not a policy authority, credential holder, or workflow state store.
 
 ## System context
 

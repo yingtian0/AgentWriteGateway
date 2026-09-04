@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/executor"
-	"agentwritegateway/internal/policy"
-	"agentwritegateway/internal/store"
-	workflowcore "agentwritegateway/internal/workflow"
+	"themisy/internal/domain"
+	"themisy/internal/executor"
+	"themisy/internal/policy"
+	"themisy/internal/store"
+	workflowcore "themisy/internal/workflow"
 
 	"go.temporal.io/sdk/testsuite"
 )

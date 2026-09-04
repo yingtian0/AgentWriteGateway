@@ -5,9 +5,9 @@
 *.coverprofile
 
 # Local persistence and workflow state
-/agent-write-gateway.db
-/agent-write-gateway.db-shm
-/agent-write-gateway.db-wal
+/themisy.db
+/themisy.db-shm
+/themisy.db-wal
 /postgres-data/
 /temporal-data/
 /.temporal/

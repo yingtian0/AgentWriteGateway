@@ -1,4 +1,4 @@
-# ADR-0001: Change Execution Control Plane
+# ADR-0001: Agent Operations Control Layer
 
 - Status: Accepted
 - Date: 2026-08-13
@@ -11,7 +11,7 @@ The product must coordinate changes across 50–500 services while preserving de
 
 ## Decision
 
-We will build a Change Execution Control Plane with a shared structured-intent and domain-command path for every client.
+We will build an Agent Operations Control Layer with a shared structured-intent and domain-command path for every client.
 
 The Control Plane owns context pinning, deterministic planning, identity and delegation verification, policy evaluation, approvals, workflow orchestration, and audit initiation. It emits a signed, short-lived Action Grant for one typed step. A separate Customer Environment Runner performs final grant and policy enforcement, obtains credentials locally, and invokes an allowlisted typed adapter.
 

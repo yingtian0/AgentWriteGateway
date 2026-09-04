@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/store"
+	"themisy/internal/domain"
+	"themisy/internal/store"
 
 	"github.com/jackc/pgx/v5"
 )

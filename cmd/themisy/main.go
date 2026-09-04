@@ -8,24 +8,24 @@ import (
 	"os"
 	"time"
 
-	"agentwritegateway/internal/api"
-	"agentwritegateway/internal/application"
-	"agentwritegateway/internal/catalog"
-	"agentwritegateway/internal/config"
-	"agentwritegateway/internal/contract"
-	"agentwritegateway/internal/executor"
-	"agentwritegateway/internal/planner"
-	"agentwritegateway/internal/policy"
-	"agentwritegateway/internal/profile"
-	postgresstore "agentwritegateway/internal/store/postgres"
-	workflowcore "agentwritegateway/internal/workflow"
+	"themisy/internal/api"
+	"themisy/internal/application"
+	"themisy/internal/catalog"
+	"themisy/internal/config"
+	"themisy/internal/contract"
+	"themisy/internal/executor"
+	"themisy/internal/planner"
+	"themisy/internal/policy"
+	"themisy/internal/profile"
+	postgresstore "themisy/internal/store/postgres"
+	workflowcore "themisy/internal/workflow"
 
 	"go.temporal.io/sdk/client"
 )
 
 func main() {
-	configPath := flag.String("config", "config/gateway.example.yaml", "gateway configuration path")
-	modeOverride := flag.String("mode", "", "gateway, worker, or all")
+	configPath := flag.String("config", "config/themisy.example.yaml", "Themisy configuration path")
+	modeOverride := flag.String("mode", "", "control, worker, or all")
 	contractOverride := flag.String("contracts", "", "service contract directory override")
 	profileOverride := flag.String("profiles", "", "release profile directory override")
 	catalogOverride := flag.String("catalog", "", "legacy JSON service catalog compatibility override")
@@ -103,7 +103,7 @@ func main() {
 		defer worker.Stop()
 	}
 	server := &http.Server{Addr: settings.HTTP.Address, Handler: api.New(releases, logger).Handler(), ReadHeaderTimeout: 5 * time.Second}
-	logger.Info("gateway listening", "address", settings.HTTP.Address, "services", len(contracts), "workflow", "temporal", "store", "postgres")
+	logger.Info("Themisy control plane listening", "address", settings.HTTP.Address, "services", len(contracts), "workflow", "temporal", "store", "postgres")
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Error("server stopped", "error", err)
 		os.Exit(1)

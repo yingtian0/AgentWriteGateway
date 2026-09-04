@@ -2,7 +2,7 @@ package protocol
 
 import "fmt"
 
-const VersionV1Alpha1 = "awg.protocol/v1alpha1"
+const VersionV1Alpha1 = "themisy.protocol/v1alpha1"
 
 func ValidateVersion(version string) error {
 	if version != VersionV1Alpha1 {

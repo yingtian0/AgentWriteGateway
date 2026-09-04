@@ -12,8 +12,8 @@ import (
 	"sort"
 	"time"
 
-	"agentwritegateway/internal/grant"
-	"agentwritegateway/pkg/protocol"
+	"themisy/internal/grant"
+	"themisy/pkg/protocol"
 )
 
 type Layer string

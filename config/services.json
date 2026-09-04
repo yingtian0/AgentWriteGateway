@@ -18,5 +18,5 @@
   {"id":"svc-17","name":"search-api","owner_team":"platform","repository":"bakuraku/mono","release_phase":4,"dependencies":["document-api"],"metadata_version":"legacy-v1","updated_at":"2026-08-11T00:00:00Z"},
   {"id":"svc-18","name":"integration-api","owner_team":"integrations","repository":"bakuraku/mono","release_phase":4,"dependencies":["payment-api","approval-api"],"metadata_version":"legacy-v1","updated_at":"2026-08-11T00:00:00Z"},
   {"id":"svc-19","name":"audit-api","owner_team":"security","repository":"bakuraku/mono","release_phase":4,"dependencies":["identity-api","organization-api"],"metadata_version":"legacy-v1","updated_at":"2026-08-11T00:00:00Z"},
-  {"id":"svc-20","name":"gateway-api","owner_team":"platform","repository":"bakuraku/mono","release_phase":5,"dependencies":["payment-api","approval-api","reporting-api","search-api"],"metadata_version":"legacy-v1","updated_at":"2026-08-11T00:00:00Z"}
+  {"id":"svc-20","name":"operations-api","owner_team":"platform","repository":"bakuraku/mono","release_phase":5,"dependencies":["payment-api","approval-api","reporting-api","search-api"],"metadata_version":"legacy-v1","updated_at":"2026-08-11T00:00:00Z"}
 ]

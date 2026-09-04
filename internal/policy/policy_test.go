@@ -3,7 +3,7 @@ package policy
 import (
 	"testing"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 func TestPolicySafetyRules(t *testing.T) {

@@ -3,7 +3,7 @@ package policy
 import (
 	"context"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 const Version = "builtin-v1"

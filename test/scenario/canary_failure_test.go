@@ -3,10 +3,10 @@ package scenario
 import (
 	"testing"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/executor"
-	workflowcore "agentwritegateway/internal/workflow"
-	"agentwritegateway/pkg/adapter"
+	"themisy/internal/domain"
+	"themisy/internal/executor"
+	workflowcore "themisy/internal/workflow"
+	"themisy/pkg/adapter"
 )
 
 func TestCanaryFailureStopsDownstreamAndVerifiesAutomaticRollback(t *testing.T) {

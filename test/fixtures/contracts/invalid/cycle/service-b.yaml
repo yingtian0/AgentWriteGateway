@@ -1,4 +1,4 @@
-apiVersion: execution.agentwritegateway.io/v1alpha1
+apiVersion: execution.themisy.io/v1alpha1
 kind: ServiceContract
 metadata:
   name: cycle-b

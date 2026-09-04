@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"strings"
 
-	"agentwritegateway/internal/application"
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/engine"
-	"agentwritegateway/internal/planner"
-	"agentwritegateway/internal/store"
+	"themisy/internal/application"
+	"themisy/internal/domain"
+	"themisy/internal/engine"
+	"themisy/internal/planner"
+	"themisy/internal/store"
 )
 
 type Server struct {

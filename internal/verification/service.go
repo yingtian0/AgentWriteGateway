@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"agentwritegateway/pkg/adapter"
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/adapter"
+	"themisy/pkg/credentials"
 )
 
 type Service struct {

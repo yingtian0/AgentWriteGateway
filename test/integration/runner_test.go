@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/store"
-	postgresstore "agentwritegateway/internal/store/postgres"
+	"themisy/internal/store"
+	postgresstore "themisy/internal/store/postgres"
 )
 
 func TestRunnerJournalSurvivesReconnectAndDeduplicatesNonce(t *testing.T) {

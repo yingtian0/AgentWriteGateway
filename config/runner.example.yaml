@@ -8,16 +8,16 @@ control_plane:
   issuer: https://control-plane.example.invalid
 identity:
   issuer: https://identity.example.invalid
-  audience: agent-write-gateway
+  audience: themisy
 policy:
   bundle_file: policies/examples/development-bundle.json
 journal:
-  database_url: ${AWG_RUNNER_DATABASE_URL}
+  database_url: ${THEMISY_RUNNER_DATABASE_URL}
 credentials:
   # These files are written by a customer-managed workload identity helper.
   # They are never returned to the Control Plane or placed in an Action Grant.
-  github_token_file: ${AWG_GITHUB_TOKEN_FILE}
-  datadog_credential_file: ${AWG_DATADOG_CREDENTIAL_FILE}
+  github_token_file: ${THEMISY_GITHUB_TOKEN_FILE}
+  datadog_credential_file: ${THEMISY_DATADOG_CREDENTIAL_FILE}
 adapters:
   github_actions:
     targets:

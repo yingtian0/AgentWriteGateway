@@ -1,4 +1,4 @@
-# Change Execution Control Plane 要件定義・実装方針
+# Themisy — Agent Operations Control Layer 要件定義・実装方針
 
 > バージョン: v1.0  
 > 改訂日: 2026-08-13  
@@ -7,7 +7,7 @@
 
 ## 1. 文書の目的
 
-本文書は、人間、CI、CLI、AI Agent から要求される本番変更を、安全に計画・実行・検証・停止・監査する **Change Execution Control Plane** の要件と実装方針を定義する。
+本文書は、人間、CI、CLI、AI Agent から要求される本番変更を、安全に計画・実行・検証・停止・監査する **Agent Operations Control Layer** の要件と実装方針を定義する。
 
 最初のユースケースは、複数マイクロサービスからなる定期リリースの自動進行である。ただし、特定企業のService Console、特定クラウド、特定CI/CDを再実装しない。共通Core、宣言的Service Contract、Release Profile、型付きAdapterによって、異なる開発現場へ展開可能な製品として設計する。
 
@@ -514,7 +514,7 @@ Control PlaneからRunnerへ低水準命令を送らず、単一Stepに限定さ
 
 Action GrantはControl Plane署名を持つ。Runnerは署名、audience、期限、nonce、Plan、Contract、Policy、主体証明、Approval、ローカルallowlistを検証する。
 
-## 17. Durable Workflow
+## 17. Durable Workflow/
 
 長時間のApproval、観測、Retry、Rollback、Runner切断があるため、標準Workflow EngineとしてTemporalを採用する。
 

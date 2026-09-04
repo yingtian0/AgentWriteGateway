@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sort"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 func Canonical(contract ServiceContract) ([]byte, error) {

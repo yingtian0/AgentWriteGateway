@@ -1,9 +1,9 @@
-apiVersion: execution.agentwritegateway.io/v1alpha1
+apiVersion: execution.themisy.io/v1alpha1
 kind: ServiceContract
 metadata:
   name: payment-api
   owner: payment-team
-  repository: github.com/example/agent-write-gateway-demo
+  repository: github.com/example/themisy-demo
   riskTier: critical
 environments:
   staging:

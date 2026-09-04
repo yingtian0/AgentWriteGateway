@@ -1,6 +1,6 @@
 package runner
 
-import "agentwritegateway/pkg/protocol"
+import "themisy/pkg/protocol"
 
 type CapabilitySet map[protocol.Capability]struct{}
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 func TestLoadDirLoadsValidContractsWithContentHash(t *testing.T) {
@@ -22,7 +22,7 @@ func TestLoadDirLoadsValidContractsWithContentHash(t *testing.T) {
 
 func TestDecodeRejectsUnknownFields(t *testing.T) {
 	data := []byte(`
-apiVersion: execution.agentwritegateway.io/v1alpha1
+apiVersion: execution.themisy.io/v1alpha1
 kind: ServiceContract
 unexpected: true
 `)

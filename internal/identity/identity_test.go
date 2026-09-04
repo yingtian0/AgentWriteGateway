@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/pkg/protocol"
+	"themisy/pkg/protocol"
 )
 
 func TestOIDCVerifierRequiresSignatureIssuerAudienceAndExpiry(t *testing.T) {
@@ -20,7 +20,7 @@ func TestOIDCVerifierRequiresSignatureIssuerAudienceAndExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	issuer, audienceValue := "https://identity.example", "agent-write-gateway"
+	issuer, audienceValue := "https://identity.example", "themisy"
 	verifier := &OIDCVerifier{Issuer: issuer, Audience: audienceValue, Keys: StaticOIDCKeys{issuer + "\x00idp-1": public}, Now: func() time.Time { return now }}
 	valid := signJWT(t, private, map[string]any{"iss": issuer, "sub": "user-1", "aud": audienceValue, "iat": now.Add(-time.Minute).Unix(), "exp": now.Add(time.Minute).Unix()})
 	subject, err := verifier.Verify(context.Background(), valid)

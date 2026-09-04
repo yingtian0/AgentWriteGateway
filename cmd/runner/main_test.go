@@ -18,7 +18,7 @@ control_plane:
   issuer: https://control.example
 identity:
   issuer: https://idp.example
-  audience: awg
+  audience: themisy
 policy:
   bundle_file: bundle.json
 capabilities: [release.deploy]
@@ -39,7 +39,7 @@ control_plane:
   issuer: https://control.example
 identity:
   issuer: https://idp.example
-  audience: awg
+  audience: themisy
 policy:
   bundle_file: bundle.json
 capabilities: [cloud.generic]
@@ -60,7 +60,7 @@ control_plane:
   issuer: https://control.example
 identity:
   issuer: https://idp.example
-  audience: awg
+  audience: themisy
 policy:
   bundle_file: bundle.json
 adapters:

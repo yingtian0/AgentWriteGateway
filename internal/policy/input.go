@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"sort"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/pkg/protocol"
+	"themisy/internal/domain"
+	"themisy/pkg/protocol"
 )
 
-const InputVersionV1Alpha1 = "awg.policy.input/v1alpha1"
+const InputVersionV1Alpha1 = "themisy.policy.input/v1alpha1"
 
 // Input is the sole canonical policy input used by both Control Plane and Runner.
 // Trusted fields are populated only after identity and delegation verification.

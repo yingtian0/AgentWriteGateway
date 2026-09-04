@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/credentials"
 )
 
 type VerificationStatus string

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"agentwritegateway/pkg/protocol"
+	"themisy/pkg/protocol"
 )
 
 var (

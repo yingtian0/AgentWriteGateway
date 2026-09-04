@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/domain"
+	"themisy/internal/domain"
 )
 
 func TestMemoryOptimisticLockAndProjectionRebuild(t *testing.T) {

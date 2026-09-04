@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	policyfiles "agentwritegateway/policies"
+	"themisy/internal/domain"
+	policyfiles "themisy/policies"
 
 	"github.com/open-policy-agent/opa/v1/rego"
 )
@@ -33,7 +33,7 @@ func NewMandatoryEngine(ctx context.Context) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	bundle := Bundle{Version: "embedded-baseline-v1", Issuer: "embedded://agent-write-gateway", Compatibility: []string{InputVersionV1Alpha1}, IssuedAt: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), ExpiresAt: time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC), Modules: []Module{{Name: "main.rego", Layer: LayerPlatform, Source: string(baseline)}}}
+	bundle := Bundle{Version: "embedded-baseline-v1", Issuer: "embedded://themisy", Compatibility: []string{InputVersionV1Alpha1}, IssuedAt: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), ExpiresAt: time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC), Modules: []Module{{Name: "main.rego", Layer: LayerPlatform, Source: string(baseline)}}}
 	bundle.Hash, err = CalculateBundleHash(bundle)
 	if err != nil {
 		return nil, err
@@ -53,7 +53,7 @@ func NewVerifiedOPA(ctx context.Context, bundle Bundle, issuer string, keys Bund
 }
 
 func newOPA(ctx context.Context, bundle Bundle) (*OPA, error) {
-	options := []func(*rego.Rego){rego.Query("data.agentwritegateway.authorization.decision")}
+	options := []func(*rego.Rego){rego.Query("data.themisy.authorization.decision")}
 	seenMandatory := false
 	for _, module := range normalizedBundle(bundle).Modules {
 		if module.Name == "" || module.Source == "" {

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"agentwritegateway/internal/store"
-	"agentwritegateway/pkg/credentials"
-	"agentwritegateway/pkg/protocol"
+	"themisy/internal/store"
+	"themisy/pkg/credentials"
+	"themisy/pkg/protocol"
 )
 
 // Reconcile resolves already-reserved writes. It may run while disconnected,

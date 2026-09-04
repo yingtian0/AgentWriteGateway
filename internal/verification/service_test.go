@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/pkg/adapter"
-	"agentwritegateway/pkg/credentials"
+	"themisy/pkg/adapter"
+	"themisy/pkg/credentials"
 )
 
 func TestServiceObtainsCredentialLocallyAndValidatesEvidence(t *testing.T) {

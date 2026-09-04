@@ -1,4 +1,4 @@
-# Contributing to Agent Write Gateway
+# Contributing to Themisy
 
 Thank you for helping build a safer change-execution boundary. This project welcomes bug reports, design discussion, documentation, tests, adapters, and code contributions.
 

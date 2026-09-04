@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"agentwritegateway/internal/domain"
-	"agentwritegateway/internal/grant"
-	"agentwritegateway/internal/identity"
-	"agentwritegateway/internal/policy"
-	"agentwritegateway/internal/runner"
-	"agentwritegateway/internal/store"
-	"agentwritegateway/pkg/protocol"
+	"themisy/internal/domain"
+	"themisy/internal/grant"
+	"themisy/internal/identity"
+	"themisy/internal/policy"
+	"themisy/internal/runner"
+	"themisy/internal/store"
+	"themisy/pkg/protocol"
 )
 
 func TestCompromisedControlPlaneCannotEscapeCustomerServiceAllowlist(t *testing.T) {
